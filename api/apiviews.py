@@ -4,9 +4,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project, Contact
-from api.serializers import ProjectSerializer, ContactSerializer, UserProfileSerializer, \
-    ProjectShortSerializer
+from api.models import Project
+from api.serializers import ProjectSerializer, UserProfileSerializer, ProjectShortSerializer
 
 
 class FunctionsMixin:
@@ -62,7 +61,6 @@ class ProjectView(APIView, FunctionsMixin):
         data = request.data
         data['dates'].sort()
         data['user'] = user
-        data['contact']['user'] = user
         project = None
         if pk is not None:
             project = Project.objects.get(pk=pk)
@@ -95,5 +93,4 @@ class DaysOffView(APIView, FunctionsMixin):
 
 class ClientsView(APIView):
     def get(self, request, user):
-        clients = Contact.objects.filter(user__username=user).order_by('name')
-        return Response(ContactSerializer(clients, many=True).data)
+        return Response({})

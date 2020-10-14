@@ -8,15 +8,10 @@ class UserProfile(models.Model):
     days_off = fields.ArrayField(models.DateField(), null=True, blank=True)
 
 
-class Contact(models.Model):
-    name = models.CharField(max_length=64)
-    phone = models.CharField(max_length=32)
-
-
 class Project(models.Model):
     dates = fields.ArrayField(models.DateField(), null=True, blank=True)
     title = models.CharField(max_length=64, blank=True)
-    contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, default=None, null=True, blank=True)
+    client = models.CharField(max_length=64)
     money = models.IntegerField(blank=True, null=True)
     info = models.TextField(blank=True)
     status = models.CharField(max_length=16, default='ok')
