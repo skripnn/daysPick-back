@@ -53,8 +53,7 @@ class ProjectView(APIView, FunctionsMixin):
             project = Project.objects.get(pk=pk)
             project.dates.sort()
         data = {'project': ProjectSerializer(project).data}
-        if request.GET.get('full') is not None:
-            data = self.get_all_projects(user, data)
+        data = self.get_all_projects(user, data)
         return Response(data)
 
     def post(self, request, user, pk=None):
@@ -67,12 +66,12 @@ class ProjectView(APIView, FunctionsMixin):
         serializer = ProjectSerializer(instance=project, data=data)
         if serializer.is_valid(raise_exception=True):
             serializer.save()
-            return Response(self.get_all_projects(user))
+            return Response({})
         return Response(status=500)
 
     def delete(self, request, user, pk):
         Project.objects.get(pk=pk).delete()
-        return Response(self.get_all_projects(user))
+        return Response({})
 
 
 class DaysOffView(APIView, FunctionsMixin):
