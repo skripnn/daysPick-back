@@ -22,11 +22,12 @@ class ProjectSerializer(serializers.Serializer):
     client = serializers.CharField()
     money = serializers.IntegerField(allow_null=True)
     info = serializers.CharField(allow_blank=True)
-    creator = serializers.CharField(read_only=True)
+    creator = serializers.CharField()
     user = serializers.CharField()
 
     def create(self, validated_data):
         validated_data['user'] = User.objects.get(username=validated_data['user'])
+        validated_data['creator'] = User.objects.get(username=validated_data['creator'])
         return Project.objects.create(**validated_data)
 
     def update(self, instance, validated_data):

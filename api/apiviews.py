@@ -1,23 +1,24 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework import status
+from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project
-from api.serializers import ProjectSerializer, UserProfileSerializer, ProjectShortSerializer
+from api.models import Project, UserProfile
+from api.serializers import ProjectSerializer, UserProfileSerializer, ProjectShortSerializer, UserSerializer
 
 
 class FunctionsMixin:
-    def get_all_projects(self, username, data=None):
+    def get_all_projects(self, username, auth_user, data=None):
+        user = User.objects.get(username=username)
         if data is None:
             data = {}
-        user = User.objects.get(is_active=True)
-        all_projects = Project.objects.filter(user__username=username)
-        projects = all_projects.filter(creator=user)
+        all_projects = Project.objects.filter(user=user)
+        projects = all_projects.filter(creator=auth_user)
         for project in projects:
             project.dates.sort()
-        for project in all_projects.exclude(creator=user):
+        for project in all_projects.exclude(creator=auth_user):
             user.profile.days_off.extend(project.dates)
         user.profile.days_off = list(set(user.profile.days_off))
         user.profile.days_off.sort()
@@ -37,29 +38,58 @@ class LoginView(APIView):
         password = request.data.get("password")
         user = authenticate(username=username, password=password)
         if user:
-            return Response({"token": user.auth_token.key})
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({'token': token.key,
+                             'user': UserSerializer(user).data['username']})
         return Response({"error": "Wrong Credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class SignupView(APIView):
+    permission_classes = ()
+
+    def get(self, request):
+        username = request.GET.get("username")
+        if len(User.objects.filter(username=username)) != 0:
+            return Response({'error': 'Username already in use'})
+        return Response({})
+
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        email = request.data.get('email')
+        user = User.objects.create_user(username=username, password=password, email=email)
+        UserProfile.objects.create(user=user)
+        user = authenticate(username=username, password=password)
+        if user:
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({'token': token.key,
+                             'user': UserSerializer(user).data['username']})
+        return Response({"error": "Something wrong"})
+
+
 class ProjectsView(APIView, FunctionsMixin):
-    def get(self, request, user):
-        return Response(self.get_all_projects(user))
+    def get(self, request, user=None):
+        if user is None:
+            user = request.user
+        return Response(self.get_all_projects(user, request.user))
 
 
 class ProjectView(APIView, FunctionsMixin):
-    def get(self, request, user, pk=None):
+    def get(self, request, pk=None):
         project = None
         if pk is not None:
             project = Project.objects.get(pk=pk)
             project.dates.sort()
         data = {'project': ProjectSerializer(project).data}
-        data = self.get_all_projects(user, data)
+        user = request.GET.get('user', request.user.username)
+        data = self.get_all_projects(user, request.user, data)
         return Response(data)
 
-    def post(self, request, user, pk=None):
+    def post(self, request, pk=None):
         data = request.data
         data['dates'].sort()
-        data['user'] = user
+        data['user'] = data.get('user', request.user.username)
+        data['creator'] = data.get('user', request.user.username)
         project = None
         if pk is not None:
             project = Project.objects.get(pk=pk)
@@ -69,27 +99,33 @@ class ProjectView(APIView, FunctionsMixin):
             return Response({})
         return Response(status=500)
 
-    def delete(self, request, user, pk):
+    def delete(self, request, pk):
         Project.objects.get(pk=pk).delete()
         return Response({})
 
 
 class DaysOffView(APIView, FunctionsMixin):
-    def get(self, request, user):
-        user = User.objects.get(is_active=True)
+    def get(self, request):
+        user = request.user
         user.profile.days_off.sort()
         return Response(UserProfileSerializer(user.profile).data['days_off'])
 
-    def post(self, request, user):
-        user = User.objects.get(is_active=True)
+    def post(self, request):
+        user = request.user
         serializer = UserProfileSerializer(instance=user.profile, data={'days_off': request.data})
 
         if serializer.is_valid(raise_exception=True):
             serializer.save()
-            return Response(self.get_all_projects(user))
+            return Response(self.get_all_projects(user, user))
         return Response(status=500)
 
 
 class ClientsView(APIView):
-    def get(self, request, user):
+    def get(self, request):
         return Response({})
+
+
+class UsersView(APIView):
+    def get(self, request):
+        users = User.objects.all()
+        return Response(UserSerializer(users, many=True).data)
