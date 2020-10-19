@@ -13,6 +13,7 @@ class ProjectShortSerializer(serializers.Serializer):
     title = serializers.CharField(allow_blank=True)
     client = serializers.CharField()
     money = serializers.IntegerField(allow_null=True)
+    status = serializers.CharField()
 
 
 class ProjectSerializer(serializers.Serializer):
@@ -22,6 +23,7 @@ class ProjectSerializer(serializers.Serializer):
     client = serializers.CharField()
     money = serializers.IntegerField(allow_null=True)
     info = serializers.CharField(allow_blank=True)
+    status = serializers.CharField(default='ok')
     creator = serializers.CharField()
     user = serializers.CharField()
 
@@ -36,6 +38,7 @@ class ProjectSerializer(serializers.Serializer):
         instance.money = validated_data.get('money', instance.money)
         instance.client = validated_data.get('client', instance.client)
         instance.info = validated_data.get('info', instance.info)
+        instance.status = validated_data.get('status', instance.status)
 
         instance.save()
         return instance
