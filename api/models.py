@@ -1,11 +1,27 @@
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, AbstractUser
 from django.db import models
 from django.contrib.postgres import fields
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     days_off = fields.ArrayField(models.DateField(), blank=True, default=list)
+    is_confirmed = models.BooleanField(default=False)
+
+    @receiver(post_save, sender=User)
+    def create_user_profile(sender, instance, created, **kwargs):
+        if created:
+            UserProfile.objects.create(user=instance)
+
+    @receiver(post_save, sender=User)
+    def save_user_profile(sender, instance, **kwargs):
+        if not instance.is_superuser:
+            instance.profile.save()
+
+    def __str__(self):
+        return self.user.username
 
 
 class Project(models.Model):

@@ -1,11 +1,13 @@
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.core.mail import send_mail
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project, UserProfile
+from api.models import Project
 from api.serializers import ProjectSerializer, UserProfileSerializer, ProjectShortSerializer, UserSerializer
 
 
@@ -46,10 +48,20 @@ class LoginView(APIView):
         password = request.data.get("password")
         user = authenticate(username=username, password=password)
         if user:
+            if not user.profile.is_confirmed:
+                return Response({'error': 'Please confirm your e-mail'})
             token, created = Token.objects.get_or_create(user=user)
             return Response({'token': token.key,
                              'user': UserSerializer(user).data['username']})
         return Response({"error": "Wrong Credentials"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TestView(APIView):
+    permission_classes = ()
+
+    def get(self, request):
+        send_mail('Subject here', 'Here is the message.', 'from@example.com', ['skripnn@gmail.com'])
+        return Response({'ok'})
 
 
 class SignupView(APIView):
@@ -65,14 +77,33 @@ class SignupView(APIView):
         username = request.data.get('username')
         password = request.data.get('password')
         email = request.data.get('email')
-        user = User.objects.create_user(username=username, password=password, email=email)
-        UserProfile.objects.create(user=user)
-        user = authenticate(username=username, password=password)
-        if user:
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({'token': token.key,
-                             'user': UserSerializer(user).data['username']})
-        return Response({"error": "Something wrong"})
+
+        User.objects.create_user(username=username, password=password, email=email)
+
+        letter = {
+            'theme': 'DaysPick e-mail confirmation',
+            'body': f'Confirm your account {username} on link: http://dayspick.ru/confirm/?user={username}&code={abs(hash(username))}',
+            'from': 'DaysPick <registration@dayspick.ru>',
+            'to': [email]
+        }
+
+        send_mail(letter['theme'],
+                  letter['body'],
+                  letter['from'],
+                  letter['to'])
+        return Response({})
+
+
+class ConfirmView(APIView):
+    permission_classes = ()
+
+    def get(self, request):
+        if abs(hash(request.GET.get('user'))) == int(request.GET.get('code')):
+            user = User.objects.get(username=request.GET.get('user'))
+            user.profile.is_confirmed = True
+            user.save()
+            return Response({'result': True})
+        return Response({'result': False})
 
 
 class ProjectsView(APIView, FunctionsMixin):
