@@ -53,7 +53,7 @@ class LoginView(APIView):
             token, created = Token.objects.get_or_create(user=user)
             return Response({'token': token.key,
                              'user': UserSerializer(user).data['username']})
-        return Response({"error": "Wrong Credentials"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Wrong login or password"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class TestView(APIView):
@@ -86,7 +86,7 @@ class SignupView(APIView):
             'from': 'DaysPick <registration@dayspick.ru>',
             'to': [email]
         }
-
+        print(f'http://dayspick.ru/confirm/?user={username}&code={abs(hash(username))}')
         send_mail(letter['theme'],
                   letter['body'],
                   letter['from'],

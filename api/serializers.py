@@ -14,6 +14,7 @@ class ProjectShortSerializer(serializers.Serializer):
     client = serializers.CharField()
     money = serializers.IntegerField(allow_null=True)
     status = serializers.CharField()
+    is_paid = serializers.BooleanField()
 
 
 class ProjectSerializer(serializers.Serializer):
@@ -24,6 +25,7 @@ class ProjectSerializer(serializers.Serializer):
     money = serializers.IntegerField(allow_null=True)
     info = serializers.CharField(allow_blank=True)
     status = serializers.CharField(default='ok')
+    is_paid = serializers.BooleanField()
     creator = serializers.CharField()
     user = serializers.CharField()
 
@@ -39,6 +41,7 @@ class ProjectSerializer(serializers.Serializer):
         instance.client = validated_data.get('client', instance.client)
         instance.info = validated_data.get('info', instance.info)
         instance.status = validated_data.get('status', instance.status)
+        instance.is_paid = validated_data.get('is_paid', instance.is_paid)
 
         instance.save()
         return instance

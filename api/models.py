@@ -34,6 +34,4 @@ class Project(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='projects')
     creator = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
                                 related_name='created_projects')
-
-
-
+    is_paid = models.BooleanField(default=False)
