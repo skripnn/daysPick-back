@@ -1,4 +1,3 @@
-from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
@@ -35,7 +34,8 @@ class FunctionsMixin:
 
         data.update({
             'projects': ProjectShortSerializer(projects, many=True).data,
-            'daysOff': UserProfileSerializer(user.profile).data['days_off']
+            'daysOff': UserProfileSerializer(user.profile).data['days_off'],
+            'user': UserSerializer(user).data
         })
         return data
 
