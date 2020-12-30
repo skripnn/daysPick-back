@@ -104,8 +104,11 @@ class UserView(APIView, FunctionsMixin):
     permission_classes = ()
 
     def get(self, request, user=None):
-        user = User.objects.get(username=user)
-        return Response(UserSerializer(user).data)
+        user_db = User.objects.get(username=user)
+        data = UserSerializer(user_db).data
+        if user != request.user:
+            data.pop('daysOff')
+        return Response(data)
 
 
 class ProjectView(APIView, FunctionsMixin):
@@ -166,12 +169,16 @@ class ClientsView(APIView):
 
 
 class UsersView(APIView):
+    permission_classes = ()
+    
     def get(self, request):
         users = User.objects.filter(is_superuser=False)
         return Response(UserSerializer(users, many=True).data)
 
 
 class CalendarView(APIView):
+    permission_classes = ()
+
     def get(self, request):
         date_format = '%Y-%m-%d'
 
