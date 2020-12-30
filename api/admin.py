@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
 
-from api.models import Project, UserProfile
+from api.models import Project, UserProfile, Day
 
 
 class UserProfileInline(admin.StackedInline):
@@ -22,7 +22,16 @@ class UserAdmin(admin.ModelAdmin):
     get_confirm.admin_order_field = 'profile__is_confirmed'
 
 
-admin.site.register(Project)
+class DayInline(admin.TabularInline):
+    model = Day
+
+
+class ProjectAdmin(admin.ModelAdmin):
+    inlines = [DayInline]
+
+
+admin.site.register(Project, ProjectAdmin)
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(UserProfile)
+admin.site.register(Day)
