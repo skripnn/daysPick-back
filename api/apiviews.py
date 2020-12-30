@@ -106,7 +106,7 @@ class UserView(APIView, FunctionsMixin):
     def get(self, request, user=None):
         user_db = User.objects.get(username=user)
         data = UserSerializer(user_db).data
-        if user != request.user:
+        if user != request.user.username:
             data.pop('daysOff')
         return Response(data)
 
@@ -170,7 +170,7 @@ class ClientsView(APIView):
 
 class UsersView(APIView):
     permission_classes = ()
-    
+
     def get(self, request):
         users = User.objects.filter(is_superuser=False)
         return Response(UserSerializer(users, many=True).data)
