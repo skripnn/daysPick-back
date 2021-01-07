@@ -16,7 +16,7 @@ Including another URLconf
 from django.urls import path
 
 from api.apiviews import ProjectView, UserView, LoginView, SignupView, DaysOffView, ClientsView, UsersView, \
-    ConfirmView, CalendarView, ProjectListView, ClientsOptionsView
+    ConfirmView, CalendarView, ProjectListView, ClientsOptionsView, ClientView
 
 urlpatterns = [
     path('login/', LoginView.as_view()),
@@ -32,5 +32,7 @@ urlpatterns = [
     path('calendar/', CalendarView.as_view()),
     path('projectlist/', ProjectListView.as_view()),
     path('clientsoptions/', ClientsOptionsView.as_view()),
+    path('client/<int:pk>/', ClientView.as_view()),
+    path('client/', ClientView.as_view()),
     path('', UsersView.as_view())
 ]

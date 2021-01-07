@@ -24,6 +24,18 @@ class UserProfile(models.Model):
         return self.user.username
 
 
+class Client(models.Model):
+    class Meta:
+        ordering = ['name', 'company']
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='clients')
+    name = models.CharField(max_length=64)
+    company = models.CharField(max_length=64, blank=True)
+
+    def __str__(self):
+        return ' - '.join([str(self.user), f'{self.name} ({self.company})'])
+
+
 class Project(models.Model):
     class Meta:
         ordering = ['date_start', 'date_end']
@@ -32,7 +44,7 @@ class Project(models.Model):
     date_start = models.DateField(null=True)
     date_end = models.DateField(null=True)
     title = models.CharField(max_length=64, blank=True)
-    client = models.CharField(max_length=64)
+    client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, default=None)
     money = models.IntegerField(blank=True, null=True)
     info = models.TextField(blank=True)
     status = models.CharField(max_length=16, default='ok')
@@ -41,16 +53,18 @@ class Project(models.Model):
                                 related_name='created_projects')
     is_paid = models.BooleanField(default=False)
 
+    def __str__(self):
+        return ' - '.join([str(self.user), str(self.id), self.title])
+
 
 class Day(models.Model):
     class Meta:
-        ordering = ['date', 'project']
+        ordering = ['date']
 
     date = models.DateField()
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='days')
 
     def __str__(self):
-        return str(self.date) + ' - project ' + str(self.project_id)
+        return ' - '.join([str(self.project), str(self.date)])
 
-    def __repr__(self):
-        return self.date
+

@@ -8,8 +8,9 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project
-from api.serializers import ProjectSerializer, UserProfileSerializer, ProjectShortSerializer, UserSerializer
+from api.models import Project, Client
+from api.serializers import ProjectSerializer, UserProfileSerializer, ProjectShortSerializer, UserSerializer, \
+    ClientSerializer
 
 
 class FunctionsMixin:
@@ -143,8 +144,24 @@ class ProjectView(APIView, FunctionsMixin):
 
 class ClientsOptionsView(APIView):
     def get(self, request):
-        clients_options = [i.client for i in Project.objects.filter(user=request.user).order_by('client').distinct('client')]
-        return Response(clients_options)
+        clients = request.user.clients.all()
+        return Response(ClientSerializer(clients, many=True).data)
+
+
+class ClientView(APIView):
+    def get(self, request, pk):
+        client = Client.objects.get(id=pk)
+        return Response(ClientSerializer(client).data)
+
+    def post(self, request, pk=None):
+        client = None
+        if pk is not None:
+            client = Client.objects.get(id=id)
+        serializer = ClientSerializer(client, data=request.data)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save(user=request.user)
+            return Response(serializer.data)
+        return Response(status=500)
 
 
 class DaysOffView(APIView, FunctionsMixin):
