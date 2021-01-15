@@ -10,37 +10,7 @@ from rest_framework.views import APIView
 
 from api.models import Project, Client
 from api.serializers import ProjectSerializer, UserProfileSerializer, ProjectShortSerializer, UserSerializer, \
-    ClientSerializer
-
-
-class FunctionsMixin:
-    def get_all_projects(self, username, auth_user, data=None):
-        user = User.objects.get(username=username)
-        if data is None:
-            data = {}
-        all_projects = Project.objects.filter(user=user)
-        if auth_user.is_anonymous:
-            for project in all_projects.all():
-                user.profile.days_off.extend(project.dates)
-            user.profile.days_off = list(set(user.profile.days_off))
-            projects = []
-        elif user != auth_user:
-            projects = all_projects.filter(creator=auth_user)
-            for project in projects:
-                project.dates.sort()
-            for project in all_projects.exclude(creator=auth_user):
-                user.profile.days_off.extend(project.dates)
-            user.profile.days_off = list(set(user.profile.days_off))
-        else:
-            projects = all_projects
-        user.profile.days_off.sort()
-
-        data.update({
-            'projects': ProjectShortSerializer(projects, many=True).data,
-            'daysOff': UserProfileSerializer(user.profile).data['days_off'],
-            'user': UserSerializer(user).data
-        })
-        return data
+    ClientSerializer, UserSelfSerializer
 
 
 class LoginView(APIView):
@@ -101,18 +71,19 @@ class ConfirmView(APIView):
         return Response({'result': False})
 
 
-class UserView(APIView, FunctionsMixin):
+class UserView(APIView):
     permission_classes = ()
 
     def get(self, request, user=None):
         user_db = User.objects.get(username=user)
-        data = UserSerializer(user_db).data
         if user != request.user.username:
-            data.pop('daysOff')
+            data = UserSerializer(user_db).data
+        else:
+            data = UserSelfSerializer(user_db).data
         return Response(data)
 
 
-class ProjectView(APIView, FunctionsMixin):
+class ProjectView(APIView):
     def get(self, request, pk):
         if pk is None:
             return Response({})
@@ -134,7 +105,7 @@ class ProjectView(APIView, FunctionsMixin):
         serializer = ProjectSerializer(instance=project, data=data)
         if serializer.is_valid(raise_exception=True):
             serializer.save()
-            return Response({})
+            return Response(serializer.data)
         return Response(status=500)
 
     def delete(self, request, pk):
@@ -142,7 +113,7 @@ class ProjectView(APIView, FunctionsMixin):
         return Response({})
 
 
-class ClientsOptionsView(APIView):
+class ClientsView(APIView):
     def get(self, request):
         clients = request.user.clients.all()
         return Response(ClientSerializer(clients, many=True).data)
@@ -164,7 +135,7 @@ class ClientView(APIView):
         return Response(status=500)
 
 
-class DaysOffView(APIView, FunctionsMixin):
+class DaysOffView(APIView):
     def get(self, request):
         user = request.user
         user.profile.days_off.sort()
@@ -176,13 +147,8 @@ class DaysOffView(APIView, FunctionsMixin):
 
         if serializer.is_valid(raise_exception=True):
             serializer.save()
-            return Response(self.get_all_projects(user, user))
+            return Response({})
         return Response(status=500)
-
-
-class ClientsView(APIView):
-    def get(self, request):
-        return Response({})
 
 
 class UsersView(APIView):
@@ -205,10 +171,8 @@ class CalendarView(APIView):
 
         if project_id is not None:
             project = Project.objects.get(id=int(project_id))
-            days_pick = project.dates
             user = project.user
         else:
-            days_pick = []
             try:
                 user = User.objects.get(username=request.GET.get('user'))
             except User.DoesNotExist:
@@ -252,11 +216,10 @@ class CalendarView(APIView):
                 days[s] = ProjectShortSerializer(days[s], many=True).data
 
         return Response({'days': days,
-                         'daysOff': UserProfileSerializer(user.profile).data['days_off'],
-                         'daysPick': days_pick})
+                         'daysOff': UserProfileSerializer(user.profile).data['days_off']})
 
 
-class ProjectListView(APIView):
+class ProjectsView(APIView):
     def get(self, request):
         def sorting(project):
             statuses = ['new', None, 'ok', 'paid']
