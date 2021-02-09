@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
@@ -8,10 +8,11 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project, Client
-from api.serializers import ProjectSerializer, UserProfileSerializer, ProjectShortSerializer, UserSerializer, \
-    ClientSerializer, UserSelfSerializer
+from api.models import Project, Client, Day
+from api.serializers import ProjectSerializer, UserSerializer, \
+    ClientSerializer, UserSelfSerializer, CalendarDaySerializer
 
+date_format = '%Y-%m-%d'
 
 class LoginView(APIView):
     permission_classes = ()
@@ -92,7 +93,6 @@ class ProjectView(APIView):
 
     def post(self, request, pk=None):
         data = request.data
-        data['dates'].sort()
         data['user'] = request.GET.get('user', request.user.username)
         project = None
         if pk is not None:
@@ -100,8 +100,7 @@ class ProjectView(APIView):
             data['creator'] = project.creator.username
         else:
             data['creator'] = request.user.username
-            if data['user'] != data['creator']:
-                data['status'] = 'new'
+        data['days'] = [{'date': key, 'info': value} for key, value in data['days'].items()]
         serializer = ProjectSerializer(instance=project, data=data)
         if serializer.is_valid(raise_exception=True):
             serializer.save()
@@ -136,19 +135,14 @@ class ClientView(APIView):
 
 
 class DaysOffView(APIView):
-    def get(self, request):
-        user = request.user
-        user.profile.days_off.sort()
-        return Response(UserProfileSerializer(user.profile).data['days_off'])
 
     def post(self, request):
-        user = request.user
-        serializer = UserProfileSerializer(instance=user.profile, data={'days_off': request.data})
-
-        if serializer.is_valid(raise_exception=True):
-            serializer.save()
-            return Response({})
-        return Response(status=500)
+        dop = request.user.profile.days_off_project
+        date = datetime.strptime(request.data, date_format).date()
+        day, created = Day.objects.get_or_create(project=dop, date=date)
+        if not created:
+            day.delete()
+        return Response({})
 
 
 class UsersView(APIView):
@@ -163,78 +157,31 @@ class CalendarView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        date_format = '%Y-%m-%d'
-
         start = datetime.strptime(request.GET.get('start'), date_format).date()
         end = datetime.strptime(request.GET.get('end'), date_format).date()
-        project_id = request.GET.get('project_id')
+        project_id = int(request.GET.get('project_id', 0))
+        user = request.GET.get('user')
 
-        if project_id is not None:
-            project = Project.objects.get(id=int(project_id))
-            user = project.user
-        else:
-            try:
-                user = User.objects.get(username=request.GET.get('user'))
-            except User.DoesNotExist:
-                user = request.user
-
-        if request.user == user:
-            all_projects = Project.objects.filter(user=user, date_start__lte=end, date_end__gte=start)
-        else:
-            all_projects = Project.objects.filter(user=user, date_start__lte=end, date_end__gte=start,
-                                                  status__regex=r'[^(new)]')
-
+        all_days = Day.objects.filter(date__range=[start, end], project__user__username=user).exclude(project_id=project_id)
         if request.user.is_anonymous:
-            for project in all_projects:
-                user.profile.days_off.extend(project.dates)
-            user.profile.days_off = list(set(user.profile.days_off))
-            projects = []
-        elif user != request.user:
-            projects = all_projects.filter(creator=request.user)
-            for project in projects:
-                project.dates.sort()
-            for project in all_projects.exclude(creator=request.user):
-                user.profile.days_off.extend(project.dates)
-            user.profile.days_off = list(set(user.profile.days_off))
+            days_off = all_days.dates('date', 'day')
+            days = {}
         else:
-            projects = all_projects
-        user.profile.days_off.sort()
+            days_off = all_days.exclude(project__creator=request.user).dates('date', 'day')
+            days = all_days.filter(project__creator=request.user)
+            days = CalendarDaySerializer(days, many=True).dict()
 
-        if project_id is not None:
-            projects = projects.exclude(id=int(project_id))
-
-        days = {}
-        delta = (end - start).days + 1
-        for i in range(delta):
-            date = start + timedelta(i)
-            s = date.strftime(date_format)
-            for project in projects:
-                if date in project.dates:
-                    days[s] = days.get(s, [])
-                    days[s].append(project)
-            if s in days:
-                days[s] = ProjectShortSerializer(days[s], many=True).data
-
-        return Response({'days': days,
-                         'daysOff': UserProfileSerializer(user.profile).data['days_off']})
+        return Response({
+            'days': days,
+            'daysOff': days_off
+        })
 
 
 class ProjectsView(APIView):
     def get(self, request):
-        def sorting(project):
-            statuses = ['new', None, 'ok', 'paid']
-            stat = project.status
-            if stat == request.user:
-                stat = 'ok'
-            if stat == 'ok' and project.is_paid:
-                stat = 'paid'
-            if stat not in statuses:
-                stat = None
-            return statuses.index(stat)
-
         user = User.objects.get(username=request.GET.get('user'))
         if user == request.user:
-            projects = sorted(Project.objects.filter(user=user).reverse(), key=sorting)
+            projects = Project.objects.filter(user=user).exclude(creator__isnull=True)
         else:
-            projects = sorted(Project.objects.filter(user=user, creator=request.user), key=sorting, reverse=True)
-        return Response(ProjectShortSerializer(projects, many=True).data)
+            projects = Project.objects.filter(user=user, creator=request.user)
+        return Response(ProjectSerializer(projects, many=True).data)

@@ -9,4 +9,6 @@ class Command(BaseCommand):
         projects = Project.objects.all()
         for project in projects:
             for date in project.dates:
-                Day.objects.create(date=date, project=project)
+                day, created = Day.objects.get_or_create(date=date, project=project)
+                if created:
+                    print(f'Day {date.strftime("%d-%m-%Y")} for project {project.id} was created.')

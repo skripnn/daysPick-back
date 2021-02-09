@@ -9,6 +9,7 @@ class UserProfileInline(admin.StackedInline):
     can_delete = False
     max_num = 1
 
+
 class ClientsInline(admin.StackedInline):
     model = Client
 
@@ -28,14 +29,23 @@ class UserAdmin(admin.ModelAdmin):
 class DayInline(admin.TabularInline):
     model = Day
 
+
+@admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'creator', 'title', 'client', 'is_paid')
     inlines = [DayInline]
 
 
+@admin.register(Day)
+class DayAdmin(admin.ModelAdmin):
+    list_display = ('date', 'project', 'info')
 
-admin.site.register(Project, ProjectAdmin)
+
+@admin.register(Client)
+class ClientAdmin(admin.ModelAdmin):
+    list_display = ('name', 'company', 'user')
+
+
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(UserProfile)
-admin.site.register(Day)
-admin.site.register(Client)
