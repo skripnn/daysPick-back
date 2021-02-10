@@ -15,15 +15,17 @@ class ClientsInline(admin.StackedInline):
 
 
 class UserAdmin(admin.ModelAdmin):
-    inlines = (UserProfileInline, ClientsInline)
-    list_display = ('username', 'first_name', 'last_name', 'is_superuser', 'get_confirm')
-    ordering = ('-is_superuser', 'username')
+    def profile_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        url = reverse('admin:api_userprofile_change', args=[obj.profile.id])
+        return format_html("<a href='{}'>{}</a>", url, str(obj.profile))
+    profile_link.admin_order_field = 'profile'
+    profile_link.short_description = 'profile'
 
-    def get_confirm(self, obj):
-        return obj.profile.is_confirmed
-    get_confirm.boolean = True
-    get_confirm.short_description = 'E-mail status'
-    get_confirm.admin_order_field = 'profile__is_confirmed'
+    inlines = (UserProfileInline,)
+    list_display = ('username', 'profile_link', 'is_superuser')
+    ordering = ('-is_superuser', 'username')
 
 
 class DayInline(admin.TabularInline):
@@ -46,6 +48,10 @@ class ClientAdmin(admin.ModelAdmin):
     list_display = ('name', 'company', 'user')
 
 
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'first_name', 'last_name', 'is_confirmed')
+
+
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
-admin.site.register(UserProfile)

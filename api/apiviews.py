@@ -8,11 +8,12 @@ from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project, Client, Day
-from api.serializers import ProjectSerializer, UserSerializer, \
-    ClientSerializer, UserSelfSerializer, CalendarDaySerializer
+from api.models import Project, Client, Day, UserProfile
+from api.serializers import ProjectSerializer, ProfileSerializer, \
+    ClientSerializer, ProfileSelfSerializer, CalendarDaySerializer
 
 date_format = '%Y-%m-%d'
+
 
 class LoginView(APIView):
     permission_classes = ()
@@ -26,7 +27,7 @@ class LoginView(APIView):
                 return Response({'error': 'Please confirm your e-mail'})
             token, created = Token.objects.get_or_create(user=user)
             return Response({'token': token.key,
-                             'user': UserSerializer(user).data['username']})
+                             'user': ProfileSerializer(user).data['username']})
         return Response({"error": "Wrong login or password"}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -53,10 +54,13 @@ class SignupView(APIView):
             'to': [email]
         }
         print(f'http://dayspick.ru/confirm/?user={username}&code={abs(hash(username))}')
-        send_mail(letter['theme'],
-                  letter['body'],
-                  letter['from'],
-                  letter['to'])
+        try:
+            send_mail(letter['theme'],
+                      letter['body'],
+                      letter['from'],
+                      letter['to'])
+        except Exception as e:
+            print(f'SEND MAIL ERROR: {e}')
         return Response({})
 
 
@@ -76,11 +80,13 @@ class UserView(APIView):
     permission_classes = ()
 
     def get(self, request, user=None):
-        user_db = User.objects.get(username=user)
-        if user != request.user.username:
-            data = UserSerializer(user_db).data
+        user_db = User.objects.filter(username=user).first()
+        if not user_db:
+            return Response(status=404)
+        if user_db != request.user:
+            data = ProfileSerializer(user_db.profile).data
         else:
-            data = UserSelfSerializer(user_db).data
+            data = ProfileSelfSerializer(user_db.profile).data
         return Response(data)
 
 
@@ -100,7 +106,6 @@ class ProjectView(APIView):
             data['creator'] = project.creator.username
         else:
             data['creator'] = request.user.username
-        data['days'] = [{'date': key, 'info': value} for key, value in data['days'].items()]
         serializer = ProjectSerializer(instance=project, data=data)
         if serializer.is_valid(raise_exception=True):
             serializer.save()
@@ -114,7 +119,7 @@ class ProjectView(APIView):
 
 class ClientsView(APIView):
     def get(self, request):
-        clients = request.user.clients.all()
+        clients = request.user.profile.clients.all()
         return Response(ClientSerializer(clients, many=True).data)
 
 
@@ -129,7 +134,7 @@ class ClientView(APIView):
             client = Client.objects.get(id=id)
         serializer = ClientSerializer(client, data=request.data)
         if serializer.is_valid(raise_exception=True):
-            serializer.save(user=request.user)
+            serializer.save(user=request.user.profile)
             return Response(serializer.data)
         return Response(status=500)
 
@@ -149,8 +154,8 @@ class UsersView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        users = User.objects.filter(is_superuser=False)
-        return Response(UserSerializer(users, many=True).data)
+        users = User.objects.filter(is_superuser=False, profile__is_confirmed=True)
+        return Response(ProfileSerializer(users, many=True).data)
 
 
 class CalendarView(APIView):
@@ -162,13 +167,13 @@ class CalendarView(APIView):
         project_id = int(request.GET.get('project_id', 0))
         user = request.GET.get('user')
 
-        all_days = Day.objects.filter(date__range=[start, end], project__user__username=user).exclude(project_id=project_id)
+        all_days = Day.objects.filter(date__range=[start, end], project__user__user__username=user).exclude(project_id=project_id)
         if request.user.is_anonymous:
             days_off = all_days.dates('date', 'day')
             days = {}
         else:
-            days_off = all_days.exclude(project__creator=request.user).dates('date', 'day')
-            days = all_days.filter(project__creator=request.user)
+            days_off = all_days.exclude(project__creator=request.user.profile).dates('date', 'day')
+            days = all_days.filter(project__creator=request.user.profile)
             days = CalendarDaySerializer(days, many=True).dict()
 
         return Response({
@@ -179,9 +184,9 @@ class CalendarView(APIView):
 
 class ProjectsView(APIView):
     def get(self, request):
-        user = User.objects.get(username=request.GET.get('user'))
-        if user == request.user:
+        user = UserProfile.objects.get(user__username=request.GET.get('user'))
+        if user == request.user.profile:
             projects = Project.objects.filter(user=user).exclude(creator__isnull=True)
         else:
-            projects = Project.objects.filter(user=user, creator=request.user)
+            projects = Project.objects.filter(user=user, creator=request.user.profile)
         return Response(ProjectSerializer(projects, many=True).data)

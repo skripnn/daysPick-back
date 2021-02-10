@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from api.models import Project, Day, Client
+from api.models import Project, Day, Client, UserProfile
 
 
 def update_data(instance, validated_data, fields: list or str):
@@ -11,34 +11,28 @@ def update_data(instance, validated_data, fields: list or str):
         setattr(instance, field, value)
 
 
-# class UserProfileSerializer(serializers.Serializer):
-#     days_off = serializers.ListField(child=serializers.DateField(), allow_empty=True)
-#
-#     def update(self, instance, validated_data):
-#         fields = ['days_off']
-#         update_data(instance, validated_data, fields)
-#
-#         instance.save()
-#         return instance
+class ProfileSelfSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        exclude = ['id', 'user', 'is_confirmed']
+
+    username = serializers.CharField(read_only=True)
 
 
-class UserSelfSerializer(serializers.Serializer):
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-    username = serializers.CharField()
-    # daysOff = serializers.ListField(child=serializers.DateField(), allow_empty=True, source='profile.days_off')
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        exclude = ['id', 'user', 'is_confirmed']
+
+    username = serializers.CharField(read_only=True)
 
 
-class UserSerializer(serializers.Serializer):
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-    username = serializers.CharField()
+class ClientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Client
+        fields = ['id', 'name', 'company', 'fullname']
+        read_only_fields = ['id']
 
-
-class ClientSerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
-    name = serializers.CharField()
-    company = serializers.CharField(allow_blank=True)
     fullname = serializers.SerializerMethodField('get_full_name')
 
     def get_full_name(self, client):
@@ -51,21 +45,52 @@ class ClientSerializer(serializers.Serializer):
         return Client.objects.create(**validated_data)
 
 
-class ProjectShortSerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
-    title = serializers.CharField(allow_blank=True)
+class ProjectShortSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = ['id', 'title', 'client', 'money', 'is_paid']
+        read_only_fields = ['id']
+
     client = ClientSerializer()
-    money = serializers.IntegerField(allow_null=True)
-    is_paid = serializers.BooleanField()
 
 
 class ListProjectDaySerializer(serializers.ListSerializer):
+    def update(self, *args, **kwargs):
+        super().update(*args, **kwargs)
+
     def to_representation(self, data):
+        def transform(day):
+            date = day.pop('date')
+            if len(day) == 1:
+                return date, list(day.values())[0]
+            return date, day
+
         data = super().to_representation(data)
-        return {day['date']: day['info'] for day in data}
+        return dict(transform(day) for day in data)
+
+    def to_internal_value(self, data):
+        def transform(key, value):
+            day = {
+                'date': key,
+                'info': value
+            }
+            return day
+
+        data = [transform(key, value) for key, value in data.items()]
+        return super().to_internal_value(data)
+
+
+class ProjectDaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Day
+        exclude = ['id', 'project']
+        list_serializer_class = ListProjectDaySerializer
 
 
 class ListCalendarDaySerializer(serializers.ListSerializer):
+    def update(self, *args, **kwargs):
+        super().update(*args, **kwargs)
+
     def dict(self):
         days = {}
         for day in self.data:
@@ -76,46 +101,32 @@ class ListCalendarDaySerializer(serializers.ListSerializer):
         return days
 
 
-class CalendarDaySerializer(serializers.Serializer):
+class CalendarDaySerializer(serializers.ModelSerializer):
     class Meta:
+        model = Day
+        exclude = ['id']
         list_serializer_class = ListCalendarDaySerializer
 
-    date = serializers.DateField()
     project = ProjectShortSerializer()
-    info = serializers.CharField(allow_blank=True)
 
     def dict(self):
         """this method works only with many=True"""
         pass
 
 
-class ProjectSerializer(serializers.Serializer):
-    class DaySerializer(serializers.Serializer):
-        class Meta:
-            list_serializer_class = ListProjectDaySerializer
+class ProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        read_only_fields = ['id', 'date_start', 'date_end']
+        exclude = ['user', 'creator']
 
-        date = serializers.DateField()
-        info = serializers.CharField(allow_null=True, allow_blank=True)
-
-    id = serializers.IntegerField(read_only=True)
-    user = serializers.CharField()
-    creator = serializers.CharField()
-    dates = serializers.ListField(child=serializers.DateField(), allow_empty=True, read_only=True)
-    date_start = serializers.DateField(allow_null=True, read_only=True)
-    date_end = serializers.DateField(allow_null=True, read_only=True)
-    days = DaySerializer(many=True, allow_null=True, default=None)
-    title = serializers.CharField(allow_blank=True)
+    days = ProjectDaySerializer(many=True, allow_null=True, default=None)
     client = ClientSerializer(allow_null=True)
-    money = serializers.IntegerField(allow_null=True)
-    money_per_day = serializers.IntegerField(allow_null=True)
-    money_calculating = serializers.BooleanField()
-    info = serializers.CharField(allow_blank=True)
-    is_paid = serializers.BooleanField()
 
     def create(self, validated_data):
-        validated_data['user'] = User.objects.get(username=validated_data['user'])
+        validated_data['user'] = User.objects.get(username=validated_data['user']).profile
         if 'creator' in validated_data:
-            validated_data['creator'] = User.objects.get(username=validated_data['creator'])
+            validated_data['creator'] = User.objects.get(username=validated_data['creator']).profile
         if 'client' in validated_data:
             validated_data['client'] = Client.objects.get(user=validated_data['creator'], **validated_data['client'])
         days = validated_data.pop('days')
@@ -129,7 +140,7 @@ class ProjectSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         if 'client' in validated_data:
-            validated_data['client'] = Client.objects.get(user__username=validated_data['user'], **validated_data['client'])
+            validated_data['client'] = Client.objects.get(user=instance.user, **validated_data['client'])
         fields = ['client', 'title', 'money', 'money_per_day', 'money_calculating', 'info', 'is_paid']
         update_data(instance, validated_data, fields)
 
