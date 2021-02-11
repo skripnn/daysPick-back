@@ -13,6 +13,15 @@ class UserProfile(models.Model):
     last_name = models.CharField(max_length=64, **null)
 
     @property
+    def full_name(self):
+        full_name = self.username
+        if self.first_name:
+            full_name = self.first_name
+        if self.last_name:
+            full_name += ' ' + self.last_name
+        return full_name
+
+    @property
     def username(self):
         return self.user.username
 
@@ -38,11 +47,11 @@ class UserProfile(models.Model):
 
 class Client(models.Model):
     class Meta:
-        ordering = ['name', 'company']
+        ordering = ['company', 'name']
 
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='clients')
     name = models.CharField(max_length=64)
-    company = models.CharField(max_length=64, **null)
+    company = models.CharField(max_length=64, **null, default='')
 
     def __str__(self):
         return ' - '.join([str(self.user), f'{self.name} ({self.company})'])
@@ -57,7 +66,7 @@ class Project(models.Model):
     date_start = models.DateField(**null)
     date_end = models.DateField(**null)
     title = models.CharField(max_length=64, **null)
-    client = models.ForeignKey(Client, on_delete=models.SET_NULL, **null)
+    client = models.ForeignKey(Client, on_delete=models.SET_NULL, **null, related_name='projects')
     money = models.IntegerField(**null)
     money_per_day = models.IntegerField(**null)
     money_calculating = models.BooleanField(default=False)

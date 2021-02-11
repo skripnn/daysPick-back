@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 
 from api.models import Project, Client, Day, UserProfile
 from api.serializers import ProjectSerializer, ProfileSerializer, \
-    ClientSerializer, ProfileSelfSerializer, CalendarDaySerializer
+    ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -120,7 +120,7 @@ class ProjectView(APIView):
 class ClientsView(APIView):
     def get(self, request):
         clients = request.user.profile.clients.all()
-        return Response(ClientSerializer(clients, many=True).data)
+        return Response(ClientShortSerializer(clients, many=True).data)
 
 
 class ClientView(APIView):
@@ -131,12 +131,16 @@ class ClientView(APIView):
     def post(self, request, pk=None):
         client = None
         if pk is not None:
-            client = Client.objects.get(id=id)
-        serializer = ClientSerializer(client, data=request.data)
+            client = Client.objects.get(id=pk)
+        serializer = ClientShortSerializer(client, data=request.data)
         if serializer.is_valid(raise_exception=True):
             serializer.save(user=request.user.profile)
             return Response(serializer.data)
         return Response(status=500)
+
+    def delete(self, request, pk):
+        Client.objects.get(id=pk).delete()
+        return Response({})
 
 
 class DaysOffView(APIView):

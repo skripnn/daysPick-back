@@ -17,6 +17,7 @@ class ProfileSelfSerializer(serializers.ModelSerializer):
         exclude = ['id', 'user', 'is_confirmed']
 
     username = serializers.CharField(read_only=True)
+    full_name = serializers.CharField(read_only=True)
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -25,13 +26,29 @@ class ProfileSerializer(serializers.ModelSerializer):
         exclude = ['id', 'user', 'is_confirmed']
 
     username = serializers.CharField(read_only=True)
+    full_name = serializers.CharField(read_only=True)
+
+
+class ClientProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = ['id', 'title']
 
 
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
-        fields = ['id', 'name', 'company', 'fullname']
+        fields = ['id', 'name', 'company', 'projects']
         read_only_fields = ['id']
+
+    projects = ClientProjectSerializer(many=True, read_only=True)
+
+
+class ClientShortSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Client
+        fields = ['id', 'name', 'company', 'fullname']
+        read_only_fields = ['id', 'fullname']
 
     fullname = serializers.SerializerMethodField('get_full_name')
 
@@ -51,7 +68,7 @@ class ProjectShortSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'client', 'money', 'is_paid']
         read_only_fields = ['id']
 
-    client = ClientSerializer()
+    client = ClientShortSerializer()
 
 
 class ListProjectDaySerializer(serializers.ListSerializer):
@@ -121,7 +138,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         exclude = ['user', 'creator']
 
     days = ProjectDaySerializer(many=True, allow_null=True, default=None)
-    client = ClientSerializer(allow_null=True)
+    client = ClientShortSerializer(allow_null=True)
 
     def create(self, validated_data):
         validated_data['user'] = User.objects.get(username=validated_data['user']).profile
@@ -139,7 +156,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         return project
 
     def update(self, instance, validated_data):
-        if 'client' in validated_data:
+        if validated_data.get('client'):
             validated_data['client'] = Client.objects.get(user=instance.user, **validated_data['client'])
         fields = ['client', 'title', 'money', 'money_per_day', 'money_calculating', 'info', 'is_paid']
         update_data(instance, validated_data, fields)
