@@ -1,7 +1,9 @@
 from django.contrib.auth.models import User, AbstractUser
 from django.db import models
+from django.db.models import Q
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 null = {'null': True, 'blank': True}
 
@@ -26,15 +28,30 @@ class UserProfile(models.Model):
         return self.user.username
 
     @property
+    def projects(self):
+        return self.all_projects.exclude(creator__isnull=True)
+
+    @property
     def days_off_project(self):
-        return self.projects.filter(creator__isnull=True).first()
+        return self.all_projects.filter(creator__isnull=True).first()
+
+    @classmethod
+    def get(cls, username, alt=None):
+        if not username:
+            return alt
+        return cls.objects.filter(user__username=username).first() or alt
+
+    def get_actual_projects(self, user):
+        today = timezone.now().date()
+        if user == self:
+            return self.projects.filter(Q(date_end__gte=today) | Q(is_paid=False))
+        return self.created_projects.filter(user=user)
 
     @receiver(post_save, sender=User)
     def create_user_profile(sender, instance, created, **kwargs):
         if created:
             profile = UserProfile.objects.create(user=instance)
-            Project.objects.create(user=profile)
-
+            profile.all_projects.create()
 
     @receiver(post_save, sender=User)
     def save_user_profile(sender, instance, **kwargs):
@@ -61,7 +78,7 @@ class Project(models.Model):
     class Meta:
         ordering = ['-date_end', '-date_start']
 
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='projects')
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='all_projects')
     creator = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, related_name='created_projects', **null)
     date_start = models.DateField(**null)
     date_end = models.DateField(**null)

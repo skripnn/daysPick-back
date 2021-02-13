@@ -23,7 +23,7 @@ urlpatterns = [
     path('signup/', SignupView.as_view()),
     path('confirm/', ConfirmView.as_view()),
 
-    path('user/<user>/', UserView.as_view()),
+    path('user/<str:username>/', UserView.as_view()),
 
     path('daysoff/', DaysOffView.as_view()),
 

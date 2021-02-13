@@ -79,15 +79,19 @@ class ConfirmView(APIView):
 class UserView(APIView):
     permission_classes = ()
 
-    def get(self, request, user=None):
-        user_db = User.objects.filter(username=user).first()
-        if not user_db:
+    def get(self, request, username=None):
+        profile = UserProfile.get(username)
+        if not profile:
             return Response(status=404)
-        if user_db != request.user:
-            data = ProfileSerializer(user_db.profile).data
+        if profile == request.user.profile:
+            user = ProfileSelfSerializer(profile).data
         else:
-            data = ProfileSelfSerializer(user_db.profile).data
-        return Response(data)
+            user = ProfileSerializer(profile.profile).data
+        projects = request.user.profile.get_actual_projects(profile)
+        return Response({
+            'user': user,
+            'projects': ProjectSerializer(projects, many=True).data
+        })
 
 
 class ProjectView(APIView):

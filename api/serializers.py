@@ -135,16 +135,17 @@ class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
         read_only_fields = ['id', 'date_start', 'date_end']
-        exclude = ['user', 'creator']
+        fields = '__all__'
 
     days = ProjectDaySerializer(many=True, allow_null=True, default=None)
     client = ClientShortSerializer(allow_null=True)
+    user = serializers.CharField()
+    creator = serializers.CharField(write_only=True, allow_null=True)
 
     def create(self, validated_data):
-        validated_data['user'] = User.objects.get(username=validated_data['user']).profile
-        if 'creator' in validated_data:
-            validated_data['creator'] = User.objects.get(username=validated_data['creator']).profile
-        if 'client' in validated_data:
+        validated_data['user'] = UserProfile.get(validated_data['user'])
+        validated_data['creator'] = UserProfile.get(validated_data['creator'])
+        if validated_data.get('client'):
             validated_data['client'] = Client.objects.get(user=validated_data['creator'], **validated_data['client'])
         days = validated_data.pop('days')
         days.sort(key=lambda i: i['date'])
