@@ -1,3 +1,4 @@
 # Project exclude paths
 /venv/
 /db/
+/db_reset.py

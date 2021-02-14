@@ -81,16 +81,19 @@ class UserView(APIView):
 
     def get(self, request, username=None):
         profile = UserProfile.get(username)
+        request_profile = UserProfile.get(request.user)
         if not profile:
             return Response(status=404)
-        if profile == request.user.profile:
+        if profile == request_profile:
             user = ProfileSelfSerializer(profile).data
         else:
-            user = ProfileSerializer(profile.profile).data
-        projects = request.user.profile.get_actual_projects(profile)
+            user = ProfileSerializer(profile).data
+        projects = profile.get_actual_projects(request_profile)
+        if projects:
+            projects = ProjectSerializer(projects, many=True).data
         return Response({
             'user': user,
-            'projects': ProjectSerializer(projects, many=True).data
+            'projects': projects or []
         })
 
 
@@ -162,7 +165,7 @@ class UsersView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        users = User.objects.filter(is_superuser=False, profile__is_confirmed=True)
+        users = UserProfile.objects.filter(is_confirmed=True, user__is_superuser=False)
         return Response(ProfileSerializer(users, many=True).data)
 
 

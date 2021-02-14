@@ -39,13 +39,17 @@ class UserProfile(models.Model):
     def get(cls, username, alt=None):
         if not username:
             return alt
+        if isinstance(username, User):
+            return cls.objects.filter(user=username).first() or alt
         return cls.objects.filter(user__username=username).first() or alt
 
-    def get_actual_projects(self, user):
+    def get_actual_projects(self, asker):
         today = timezone.now().date()
-        if user == self:
+        if asker == self:
             return self.projects.filter(Q(date_end__gte=today) | Q(is_paid=False))
-        return self.created_projects.filter(user=user)
+        if not asker:
+            return None
+        return self.projects.filter(creator=asker)
 
     @receiver(post_save, sender=User)
     def create_user_profile(sender, instance, created, **kwargs):
