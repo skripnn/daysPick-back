@@ -1,4 +1,3 @@
-from django.contrib.auth.models import User
 from rest_framework import serializers
 from api.models import Project, Day, Client, UserProfile
 
@@ -18,6 +17,7 @@ class ProfileSelfSerializer(serializers.ModelSerializer):
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
+    positions = serializers.StringRelatedField(many=True)
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -27,6 +27,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
+    positions = serializers.StringRelatedField(many=True)
 
 
 class ClientProjectSerializer(serializers.ModelSerializer):

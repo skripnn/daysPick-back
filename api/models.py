@@ -21,11 +21,25 @@ class ClientsManager(models.Manager):
             .annotate(rank=SearchRank(vector, search)).order_by('-rank')
 
 
+class Position(models.Model):
+    class Meta:
+        ordering = ['title']
+
+    title = models.CharField(max_length=64)
+
+    def __str__(self):
+        return self.title
+
+    def __repr__(self):
+        return self.title
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     is_confirmed = models.BooleanField(default=False)
     first_name = models.CharField(max_length=64, **null)
     last_name = models.CharField(max_length=64, **null)
+    positions = models.ManyToManyField('Position', related_name='profiles')
 
     @property
     def full_name(self):

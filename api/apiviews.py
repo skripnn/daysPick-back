@@ -4,13 +4,14 @@ from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
-from django.db.models import Q
+from django.db.models import Q, When, Exists, Case, Value, BooleanField
+from django.db.models.functions import Length
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project, Client, Day, UserProfile
+from api.models import Project, Client, Day, UserProfile, Position
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer
 
@@ -204,3 +205,25 @@ class ProjectsView(APIView):
         else:
             projects = user.projects.filter(creator=asker).search(request.GET.get('filter'))
         return Response(ProjectSerializer(projects, many=True).data)
+
+
+class PositionView(APIView):
+    def get(self, request, position):
+        position = Position.objects.filter(title__istartswith=position).order_by(Length('title').asc()).first()
+        result = ''
+        if position:
+            result = position.title
+        return Response(result)
+
+    def put(self, request, position):
+        position, created = Position.objects.get_or_create(title=position)
+        request.user.profile.positions.add(position)
+        return Response(ProfileSelfSerializer(request.user.profile).data['positions'])
+
+    def delete(self, request, position):
+        position = Position.objects.filter(title=position).first()
+        if position:
+            request.user.profile.positions.remove(position)
+        if not position.profiles.count():
+            position.delete()
+        return Response(ProfileSelfSerializer(request.user.profile).data['positions'])
