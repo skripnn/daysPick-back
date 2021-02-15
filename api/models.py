@@ -12,13 +12,22 @@ null = {'null': True, 'blank': True}
 class ClientsManager(models.Manager):
     use_for_related_fields = True
 
-    def search(self, search=None):
-        if not search:
-            return self.get_queryset().all()
+    def search(self, filter=None, name=None, company=None):
+        if filter:
+            vector = SearchVector('name', 'company')
+            return self.get_queryset().filter(Q(name__icontains=filter) | Q(company__icontains=filter))\
+                .annotate(rank=SearchRank(vector, filter)).order_by('-rank')
 
-        vector = SearchVector('name', 'company')
-        return self.get_queryset().filter(Q(name__icontains=search) | Q(company__icontains=search))\
-            .annotate(rank=SearchRank(vector, search)).order_by('-rank')
+        if name and company:
+            return self.get_queryset().filter(company__istartswith=company, name__istartswith=name)
+
+        if name:
+            return self.get_queryset().filter(name__istartswith=name)
+
+        if company:
+            return self.get_queryset().filter(company__istartswith=company)
+
+        return self.get_queryset().all()
 
 
 class Position(models.Model):

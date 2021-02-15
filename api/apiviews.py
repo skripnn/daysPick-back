@@ -129,7 +129,11 @@ class ProjectView(APIView):
 
 class ClientsView(APIView):
     def get(self, request):
-        clients = request.user.profile.clients.search(request.GET.get('filter'))
+        clients = request.user.profile.clients.search(
+            filter=request.GET.get('filter'),
+            name=request.GET.get('name'),
+            company=request.GET.get('company')
+        )
         return Response(ClientShortSerializer(clients, many=True).data)
 
 
