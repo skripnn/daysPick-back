@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User, AbstractUser
+from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_save
@@ -6,6 +7,18 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 null = {'null': True, 'blank': True}
+
+
+class ClientsManager(models.Manager):
+    use_for_related_fields = True
+
+    def search(self, search=None):
+        if not search:
+            return self.get_queryset().all()
+
+        vector = SearchVector('name', 'company')
+        return self.get_queryset().filter(Q(name__icontains=search) | Q(company__icontains=search))\
+            .annotate(rank=SearchRank(vector, search)).order_by('-rank')
 
 
 class UserProfile(models.Model):
@@ -74,8 +87,27 @@ class Client(models.Model):
     name = models.CharField(max_length=64)
     company = models.CharField(max_length=64, **null, default='')
 
+    objects = ClientsManager()
+
     def __str__(self):
         return ' - '.join([str(self.user), f'{self.name} ({self.company})'])
+
+
+class ProjectsQuerySet(models.QuerySet):
+    def search(self, search=None):
+        if not search:
+            return self
+
+        vector = SearchVector('title', 'client__name', 'client__company')
+        return self.filter(Q(title__icontains=search) | Q(client__name__icontains=search) | Q(client__company__icontains=search))\
+            .annotate(rank=SearchRank(vector, search)).order_by('-rank')
+
+
+class ProjectsManager(models.Manager):
+    use_for_related_fields = True
+
+    def get_queryset(self):
+        return ProjectsQuerySet(self.model, using=self._db)
 
 
 class Project(models.Model):
@@ -93,6 +125,8 @@ class Project(models.Model):
     money_calculating = models.BooleanField(default=False)
     info = models.TextField(**null)
     is_paid = models.BooleanField(default=False)
+
+    objects = ProjectsManager()
 
     @property
     def dates(self):

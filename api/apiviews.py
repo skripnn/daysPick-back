@@ -1,8 +1,10 @@
 from datetime import datetime
 
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -126,7 +128,7 @@ class ProjectView(APIView):
 
 class ClientsView(APIView):
     def get(self, request):
-        clients = request.user.profile.clients.all()
+        clients = request.user.profile.clients.search(request.GET.get('filter'))
         return Response(ClientShortSerializer(clients, many=True).data)
 
 
@@ -195,9 +197,10 @@ class CalendarView(APIView):
 
 class ProjectsView(APIView):
     def get(self, request):
-        user = UserProfile.objects.get(user__username=request.GET.get('user'))
-        if user == request.user.profile:
-            projects = Project.objects.filter(user=user).exclude(creator__isnull=True)
+        user = UserProfile.get(request.GET.get('user'))
+        asker = UserProfile.get(request.user)
+        if user == asker:
+            projects = user.projects.search(request.GET.get('filter'))
         else:
-            projects = Project.objects.filter(user=user, creator=request.user.profile)
+            projects = user.projects.filter(creator=asker).search(request.GET.get('filter'))
         return Response(ProjectSerializer(projects, many=True).data)
