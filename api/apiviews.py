@@ -1,10 +1,8 @@
 from datetime import datetime
 
-from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
-from django.db.models import Q, When, Exists, Case, Value, BooleanField
 from django.db.models.functions import Length
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -30,7 +28,7 @@ class LoginView(APIView):
                 return Response({'error': 'Please confirm your e-mail'})
             token, created = Token.objects.get_or_create(user=user)
             return Response({'token': token.key,
-                             'user': ProfileSerializer(user).data['username']})
+                             'user': user.username})
         return Response({"error": "Wrong login or password"}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -231,3 +229,9 @@ class PositionView(APIView):
         if not position.profiles.count():
             position.delete()
         return Response(ProfileSelfSerializer(request.user.profile).data['positions'])
+
+
+class UserProfileView(APIView):
+    def post(self, request):
+        data = request.user.profile.update(request.data)
+        return Response(data)

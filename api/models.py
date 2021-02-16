@@ -13,21 +13,22 @@ class ClientsManager(models.Manager):
     use_for_related_fields = True
 
     def search(self, filter=None, name=None, company=None):
+        queryset = self.get_queryset()
         if filter:
             vector = SearchVector('name', 'company')
-            return self.get_queryset().filter(Q(name__icontains=filter) | Q(company__icontains=filter))\
+            return queryset.filter(Q(name__icontains=filter) | Q(company__icontains=filter))\
                 .annotate(rank=SearchRank(vector, filter)).order_by('-rank')
 
         if name and company:
-            return self.get_queryset().filter(company__istartswith=company, name__istartswith=name)
+            return queryset.filter(company__istartswith=company, name__istartswith=name)
 
         if name:
-            return self.get_queryset().filter(name__istartswith=name)
+            return queryset.filter(name__istartswith=name)
 
         if company:
-            return self.get_queryset().filter(company__istartswith=company)
+            return queryset.filter(company__istartswith=company)
 
-        return self.get_queryset().all()
+        return queryset.all()
 
 
 class Position(models.Model):
@@ -86,6 +87,13 @@ class UserProfile(models.Model):
         if not asker:
             return None
         return self.projects.filter(creator=asker)
+
+    def update(self, data):
+        result = {}
+        for key, value in data.items():
+            setattr(self, key, value)
+            result[key] = getattr(self, key)
+        return result
 
     @receiver(post_save, sender=User)
     def create_user_profile(sender, instance, created, **kwargs):
