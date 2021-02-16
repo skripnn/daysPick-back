@@ -233,5 +233,5 @@ class PositionView(APIView):
 
 class UserProfileView(APIView):
     def post(self, request):
-        data = request.user.profile.update(request.data)
-        return Response(data)
+        profile = request.user.profile.update(request.data)
+        return Response(ProfileSelfSerializer(profile).data)

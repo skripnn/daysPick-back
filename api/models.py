@@ -89,11 +89,10 @@ class UserProfile(models.Model):
         return self.projects.filter(creator=asker)
 
     def update(self, data):
-        result = {}
         for key, value in data.items():
             setattr(self, key, value)
-            result[key] = getattr(self, key)
-        return result
+        self.save()
+        return self
 
     @receiver(post_save, sender=User)
     def create_user_profile(sender, instance, created, **kwargs):
