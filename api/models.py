@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
@@ -99,6 +100,33 @@ class UserProfile(models.Model):
                 phone = f'+{p[0]} ({p[1:4]}) {p[4:7]}-{p[7:9]}-{p[9:]}'
                 return cls.objects.filter(phone_confirm=phone).first() or alt
         return cls.objects.filter(user__username=username).first() or alt
+
+    @classmethod
+    def search(cls, **kwargs):
+        print('kwargs', kwargs)
+        users = cls.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True)
+        if kwargs.get('filter'):
+            for search in kwargs['filter']:
+                words = search.split(' ')
+                phones = re.findall('9[0-9]{2}.{,2}[0-9]{3}.?[0-9]{2}.?[0-9]{2}', search)
+                for i in range(len(phones)):
+                    p = '7' + ''.join(re.findall('[0-9]', phones[i]))[:10]
+                    phones[i] = f'+{p[0]} ({p[1:4]}) {p[4:7]}-{p[7:9]}-{p[9:]}'
+                vector = SearchVector('user__username', 'first_name', 'last_name', 'phone')
+                users = users.filter(
+                    Q(user__username__icontains=search) |
+                    Q(first_name__icontains=search) |
+                    Q(last_name__icontains=search) |
+                    Q(user__username__in=words) |
+                    Q(first_name__in=words) |
+                    Q(last_name__in=words) |
+                    Q(phone_confirm__in=phones) |
+                    Q(positions__title__icontains=search)
+                ).annotate(rank=SearchRank(vector, search)).order_by('-rank').distinct()
+        if kwargs.get('days'):
+            dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
+            users = users.exclude(all_projects__days__date__in=dates)
+        return users
 
     def get_actual_projects(self, asker):
         today = timezone.now().date()

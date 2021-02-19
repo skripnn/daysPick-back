@@ -24,6 +24,7 @@ urlpatterns = [
     path('confirm/', ConfirmView.as_view()),
 
     path('user/<str:username>/', UserView.as_view()),
+    path('users/', UsersView.as_view()),
 
     path('profile/position/<str:position>/', PositionView.as_view()),
     path('profile/', UserProfileView.as_view()),

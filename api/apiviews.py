@@ -160,7 +160,7 @@ class UsersView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        users = UserProfile.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True)
+        users = UserProfile.search(**request.GET)
         return Response(ProfileSerializer(users, many=True).data)
 
 
