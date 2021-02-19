@@ -13,8 +13,9 @@ import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+from .keys import TELEGRAM_TOKEN
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/3.1/howto/deployment/checklist/
@@ -27,7 +28,6 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
-
 # Application definition
 
 INSTALLED_APPS = [
@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.postgres',
+    'django_telegrambot',
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
@@ -78,7 +79,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'timespick.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/3.1/ref/settings/#databases
 
@@ -92,7 +92,6 @@ DATABASES = {
         'PORT': '',
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/3.1/ref/settings/#auth-password-validators
@@ -134,7 +133,6 @@ EMAIL_HOST_PASSWORD = ''
 EMAIL_USE_TLS = False
 DEFAULT_FROM_EMAIL = 'DaysPick <robot@dayspick.ru>'
 
-
 LANGUAGE_CODE = 'en-us'
 
 TIME_ZONE = 'UTC'
@@ -145,9 +143,23 @@ USE_L10N = True
 
 USE_TZ = True
 
-
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.1/howto/static-files/
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'static'
+
+DJANGO_TELEGRAMBOT = {
+
+    'MODE': 'WEBHOOK',
+
+    'WEBHOOK_SITE': 'https://dayspick.ru',
+    'WEBHOOK_PREFIX': 'bot',
+
+    'BOTS': [
+        {
+            'TOKEN': TELEGRAM_TOKEN
+        },
+    ],
+
+}

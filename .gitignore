@@ -2,3 +2,6 @@
 /venv/
 /db/
 /db_reset.py
+/webhook_cert.pem
+/webhook_pkey.pem
+/timespick/keys.py

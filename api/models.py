@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models
@@ -9,6 +11,11 @@ from django.utils import timezone
 null = {'null': True, 'blank': True}
 
 
+class Telegram(models.Model):
+    chat_id = models.IntegerField()
+    profile = models.ForeignKey('UserProfile', on_delete=models.CASCADE, **null, related_name='telegram_phone_confirm')
+
+
 class ClientsManager(models.Manager):
     use_for_related_fields = True
 
@@ -16,7 +23,7 @@ class ClientsManager(models.Manager):
         queryset = self.get_queryset()
         if filter:
             vector = SearchVector('name', 'company')
-            return queryset.filter(Q(name__icontains=filter) | Q(company__icontains=filter))\
+            return queryset.filter(Q(name__icontains=filter) | Q(company__icontains=filter)) \
                 .annotate(rank=SearchRank(vector, filter)).order_by('-rank')
 
         if name and company:
@@ -46,10 +53,18 @@ class Position(models.Model):
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    is_confirmed = models.BooleanField(default=False)
     first_name = models.CharField(max_length=64, **null)
     last_name = models.CharField(max_length=64, **null)
-    positions = models.ManyToManyField('Position', related_name='profiles')
+    positions = models.ManyToManyField('Position', related_name='profiles', blank=True)
+    email = models.EmailField(**null)
+    email_confirm = models.EmailField(**null)
+    phone = models.CharField(max_length=32, **null)
+    phone_confirm = models.CharField(max_length=32, **null)
+    telegram_chat_id = models.IntegerField(**null)
+
+    @property
+    def is_confirmed(self):
+        return bool(self.email_confirm or self.phone_confirm)
 
     @property
     def full_name(self):
@@ -78,6 +93,11 @@ class UserProfile(models.Model):
             return alt
         if isinstance(username, User):
             return cls.objects.filter(user=username).first() or alt
+        if isinstance(username, str):
+            if re.match('^[0-9]{11}$', username):
+                p = username
+                phone = f'+{p[0]} ({p[1:4]}) {p[4:7]}-{p[7:9]}-{p[9:]}'
+                return cls.objects.filter(phone_confirm=phone).first() or alt
         return cls.objects.filter(user__username=username).first() or alt
 
     def get_actual_projects(self, asker):
@@ -88,16 +108,45 @@ class UserProfile(models.Model):
             return None
         return self.projects.filter(creator=asker)
 
-    def update(self, data):
-        for key, value in data.items():
+    def update(self, **kwargs):
+        for key, value in kwargs.items():
             setattr(self, key, value)
+            if key == 'email' and value:
+                self.send_confirmation_email()
         self.save()
         return self
+
+    def send_confirmation_email(self):
+        code = hash(self.email)
+        print('send', self.email, code)
+        letter = {
+            'theme': 'DaysPick e-mail confirmation',
+            'body': f'Confirm your account {self.username} on link: http://dayspick.ru/confirm/?user={self.username}&code={code}',
+            'from': 'DaysPick <registration@dayspick.ru>',
+            'to': [self.email]
+        }
+        print(f'http://dayspick.ru/confirm/?user={self.username}&code={code}')
+        try:
+            from django.core.mail import send_mail
+            send_mail(letter['theme'],
+                      letter['body'],
+                      letter['from'],
+                      letter['to'])
+        except Exception as e:
+            print(f'SEND MAIL ERROR: {e}')
+
+    def confirm_email(self, code):
+        hash_code = hash(self.email)
+        print('confirm', self.email, hash_code)
+        if str(hash_code) == code:
+            self.update(email_confirm=self.email, email=None)
+            return True
+        return False
 
     @receiver(post_save, sender=User)
     def create_user_profile(sender, instance, created, **kwargs):
         if created:
-            profile = UserProfile.objects.create(user=instance)
+            profile = UserProfile.objects.create(user=instance, email=instance.email)
             profile.all_projects.create()
 
     @receiver(post_save, sender=User)
@@ -129,7 +178,8 @@ class ProjectsQuerySet(models.QuerySet):
             return self
 
         vector = SearchVector('title', 'client__name', 'client__company')
-        return self.filter(Q(title__icontains=search) | Q(client__name__icontains=search) | Q(client__company__icontains=search))\
+        return self.filter(
+            Q(title__icontains=search) | Q(client__name__icontains=search) | Q(client__company__icontains=search)) \
             .annotate(rank=SearchRank(vector, search)).order_by('-rank')
 
 

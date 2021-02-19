@@ -1,8 +1,8 @@
+import re
 from datetime import datetime
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from django.core.mail import send_mail
 from django.db.models.functions import Length
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -25,7 +25,7 @@ class LoginView(APIView):
         user = authenticate(username=username, password=password)
         if user:
             if not user.profile.is_confirmed:
-                return Response({'error': 'Please confirm your e-mail'})
+                return Response({'error': 'Please confirm your account'})
             token, created = Token.objects.get_or_create(user=user)
             return Response({'token': token.key,
                              'user': user.username})
@@ -37,7 +37,13 @@ class SignupView(APIView):
 
     def get(self, request):
         username = request.GET.get("username")
-        if len(User.objects.filter(username=username)) != 0:
+        if re.match('^[^a-zA-Z]', username):
+            return Response({'error': 'Username может начаинаться только с латинской буквы'})
+        if len(username) < 4:
+            return Response({'error': 'Username не может быть короче 4х симоволов'})
+        if re.match('[^a-z0-9_]', username):
+            return Response({'error': 'Username может содержать только латинские буквы, цифры и нижнее подчеркивание'})
+        if User.objects.filter(username=username).count() != 0:
             return Response({'error': 'Username already in use'})
         return Response({})
 
@@ -47,21 +53,7 @@ class SignupView(APIView):
         email = request.data.get('email')
 
         User.objects.create_user(username=username, password=password, email=email)
-
-        letter = {
-            'theme': 'DaysPick e-mail confirmation',
-            'body': f'Confirm your account {username} on link: http://dayspick.ru/confirm/?user={username}&code={abs(hash(username))}',
-            'from': 'DaysPick <registration@dayspick.ru>',
-            'to': [email]
-        }
-        print(f'http://dayspick.ru/confirm/?user={username}&code={abs(hash(username))}')
-        try:
-            send_mail(letter['theme'],
-                      letter['body'],
-                      letter['from'],
-                      letter['to'])
-        except Exception as e:
-            print(f'SEND MAIL ERROR: {e}')
+        UserProfile.get(username).send_confirmation_email()
         return Response({})
 
 
@@ -69,12 +61,10 @@ class ConfirmView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        if abs(hash(request.GET.get('user'))) == int(request.GET.get('code')):
-            user = User.objects.get(username=request.GET.get('user'))
-            user.profile.is_confirmed = True
-            user.save()
-            return Response({'result': True})
-        return Response({'result': False})
+        profile = UserProfile.get(request.GET.get('user'))
+        if profile:
+            return Response({'result': profile.confirm_email(request.GET.get('code'))})
+        return Response({'result': None})
 
 
 class UserView(APIView):
@@ -170,7 +160,7 @@ class UsersView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        users = UserProfile.objects.filter(is_confirmed=True, user__is_superuser=False)
+        users = UserProfile.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True)
         return Response(ProfileSerializer(users, many=True).data)
 
 
@@ -233,5 +223,5 @@ class PositionView(APIView):
 
 class UserProfileView(APIView):
     def post(self, request):
-        profile = request.user.profile.update(request.data)
+        profile = request.user.profile.update(**request.data)
         return Response(ProfileSelfSerializer(profile).data)

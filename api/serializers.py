@@ -13,7 +13,7 @@ def update_data(instance, validated_data, fields: list or str):
 class ProfileSelfSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        exclude = ['id', 'user', 'is_confirmed']
+        exclude = ['id', 'user']
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
@@ -23,7 +23,7 @@ class ProfileSelfSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        exclude = ['id', 'user', 'is_confirmed']
+        exclude = ['id', 'user']
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
