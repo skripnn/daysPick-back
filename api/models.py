@@ -8,6 +8,9 @@ from django.db.models import Q
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
+from pyaspeller import YandexSpeller
+
+from .utils import phone_format
 
 null = {'null': True, 'blank': True}
 
@@ -96,22 +99,20 @@ class UserProfile(models.Model):
             return cls.objects.filter(user=username).first() or alt
         if isinstance(username, str):
             if re.match('^[0-9]{11}$', username):
-                p = username
-                phone = f'+{p[0]} ({p[1:4]}) {p[4:7]}-{p[7:9]}-{p[9:]}'
+                phone = phone_format(username)
                 return cls.objects.filter(phone_confirm=phone).first() or alt
         return cls.objects.filter(user__username=username).first() or alt
 
     @classmethod
     def search(cls, **kwargs):
-        print('kwargs', kwargs)
         users = cls.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True)
         if kwargs.get('filter'):
             for search in kwargs['filter']:
                 words = search.split(' ')
+                spelled = YandexSpeller().spelled(search)
+                options = [option for option in spelled.split(' ') if len(option) > 1]
                 phones = re.findall('9[0-9]{2}.{,2}[0-9]{3}.?[0-9]{2}.?[0-9]{2}', search)
-                for i in range(len(phones)):
-                    p = '7' + ''.join(re.findall('[0-9]', phones[i]))[:10]
-                    phones[i] = f'+{p[0]} ({p[1:4]}) {p[4:7]}-{p[7:9]}-{p[9:]}'
+                phones = [phone_format('7' + ''.join(re.findall('[0-9]', phone))[:10]) for phone in phones]
                 vector = SearchVector('user__username', 'first_name', 'last_name', 'phone')
                 users = users.filter(
                     Q(user__username__icontains=search) |
@@ -121,7 +122,14 @@ class UserProfile(models.Model):
                     Q(first_name__in=words) |
                     Q(last_name__in=words) |
                     Q(phone_confirm__in=phones) |
-                    Q(positions__title__icontains=search)
+                    Q(positions__title__icontains=search) |
+                    Q(user__username__icontains=spelled) |
+                    Q(first_name__icontains=spelled) |
+                    Q(last_name__icontains=spelled) |
+                    Q(user__username__in=options) |
+                    Q(first_name__in=options) |
+                    Q(last_name__in=options) |
+                    Q(positions__title__icontains=spelled)
                 ).annotate(rank=SearchRank(vector, search)).order_by('-rank').distinct()
         if kwargs.get('days'):
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]

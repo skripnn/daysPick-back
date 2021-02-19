@@ -7,7 +7,8 @@ from telebot import types
 
 import logging
 
-from api.models import Telegram, UserProfile
+from .models import Telegram, UserProfile
+from .utils import phone_format
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +60,7 @@ def telephone(update, context):
 
 def answer(update, context):
     if update.message.contact:
-        p = update.message.contact.phone_number
-        phone = f'+{p[0]} ({p[1:4]}) {p[4:7]}-{p[7:9]}-{p[9:]}'
+        phone = phone_format(update.message.contact.phone_number)
         chat_id = update.effective_chat.id
 
         tg = Telegram.objects.filter(chat_id=update.effective_chat.id, profile__isnull=False).first()
