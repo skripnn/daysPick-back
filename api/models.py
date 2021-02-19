@@ -23,23 +23,41 @@ class Telegram(models.Model):
 class ClientsManager(models.Manager):
     use_for_related_fields = True
 
-    def search(self, filter=None, name=None, company=None):
-        queryset = self.get_queryset()
-        if filter:
-            vector = SearchVector('name', 'company')
-            return queryset.filter(Q(name__icontains=filter) | Q(company__icontains=filter)) \
-                .annotate(rank=SearchRank(vector, filter)).order_by('-rank')
+    def search(self, **kwargs):
+        if not kwargs:
+            return self.get_queryset().all()
 
-        if name and company:
-            return queryset.filter(company__istartswith=company, name__istartswith=name)
+        search = kwargs.get('filter')
+        name = kwargs.get('name')
+        company = kwargs.get('compnay')
+        days = kwargs.get('days')
+        clients = self.get_queryset()
+
+        if search:
+            search = search[0]
+            spelled = YandexSpeller().spelled(search)
+            options = [option for option in spelled.split(' ') if len(option) > 1]
+            vector = SearchVector('name', 'company')
+            clients = clients.filter(
+                Q(name__icontains=search) |
+                Q(company__icontains=search) |
+                Q(name__icontains=spelled) |
+                Q(company__icontains=spelled) |
+                Q(name__in=options) |
+                Q(company__in=options)
+            ).annotate(rank=SearchRank(vector, search)).order_by('-rank')
 
         if name:
-            return queryset.filter(name__istartswith=name)
+            clients = clients.filter(name__istartswith=name)
 
         if company:
-            return queryset.filter(company__istartswith=company)
+            clients = clients.filter(company__istartswith=company)
 
-        return queryset.all()
+        if days:
+            dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
+            clients = clients.filter(projects__days__date__in=dates).distinct()
+
+        return clients
 
 
 class Position(models.Model):
@@ -107,30 +125,32 @@ class UserProfile(models.Model):
     def search(cls, **kwargs):
         users = cls.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True)
         if kwargs.get('filter'):
-            for search in kwargs['filter']:
-                words = search.split(' ')
-                spelled = YandexSpeller().spelled(search)
-                options = [option for option in spelled.split(' ') if len(option) > 1]
-                phones = re.findall('9[0-9]{2}.{,2}[0-9]{3}.?[0-9]{2}.?[0-9]{2}', search)
-                phones = [phone_format('7' + ''.join(re.findall('[0-9]', phone))[:10]) for phone in phones]
-                vector = SearchVector('user__username', 'first_name', 'last_name', 'phone')
-                users = users.filter(
-                    Q(user__username__icontains=search) |
-                    Q(first_name__icontains=search) |
-                    Q(last_name__icontains=search) |
-                    Q(user__username__in=words) |
-                    Q(first_name__in=words) |
-                    Q(last_name__in=words) |
-                    Q(phone_confirm__in=phones) |
-                    Q(positions__title__icontains=search) |
-                    Q(user__username__icontains=spelled) |
-                    Q(first_name__icontains=spelled) |
-                    Q(last_name__icontains=spelled) |
-                    Q(user__username__in=options) |
-                    Q(first_name__in=options) |
-                    Q(last_name__in=options) |
-                    Q(positions__title__icontains=spelled)
-                ).annotate(rank=SearchRank(vector, search)).order_by('-rank').distinct()
+            search = kwargs['filter'][0]
+            words = search.split(' ')
+            if len(words) == 1 and not words[0]:
+                return []
+            spelled = YandexSpeller().spelled(search)
+            options = [option for option in spelled.split(' ') if len(option) > 1]
+            phones = re.findall('9[0-9]{2}.{,2}[0-9]{3}.?[0-9]{2}.?[0-9]{2}', search)
+            phones = [phone_format('7' + ''.join(re.findall('[0-9]', phone))[:10]) for phone in phones]
+            vector = SearchVector('user__username', 'first_name', 'last_name', 'phone')
+            users = users.filter(
+                Q(user__username__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(user__username__in=words) |
+                Q(first_name__in=words) |
+                Q(last_name__in=words) |
+                Q(phone_confirm__in=phones) |
+                Q(positions__title__icontains=search) |
+                Q(user__username__icontains=spelled) |
+                Q(first_name__icontains=spelled) |
+                Q(last_name__icontains=spelled) |
+                Q(user__username__in=options) |
+                Q(first_name__in=options) |
+                Q(last_name__in=options) |
+                Q(positions__title__icontains=spelled)
+            ).annotate(rank=SearchRank(vector, search)).order_by('-rank').distinct()
         if kwargs.get('days'):
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
             users = users.exclude(all_projects__days__date__in=dates)
@@ -209,14 +229,34 @@ class Client(models.Model):
 
 
 class ProjectsQuerySet(models.QuerySet):
-    def search(self, search=None):
-        if not search:
-            return self
+    def search(self, **kwargs):
+        search = kwargs.get('filter')
+        days = kwargs.get('days')
 
-        vector = SearchVector('title', 'client__name', 'client__company')
-        return self.filter(
-            Q(title__icontains=search) | Q(client__name__icontains=search) | Q(client__company__icontains=search)) \
-            .annotate(rank=SearchRank(vector, search)).order_by('-rank')
+        projects = self
+
+        if search:
+            search = search[0]
+            spelled = YandexSpeller().spelled(search)
+            options = [option for option in spelled.split(' ') if len(option) > 1]
+            vector = SearchVector('title', 'client__name', 'client__company')
+            projects = projects.filter(
+                Q(title__icontains=search) |
+                Q(client__name__icontains=search) |
+                Q(client__company__icontains=search) |
+                Q(title__icontains=spelled) |
+                Q(client__name__icontains=spelled) |
+                Q(client__company__icontains=spelled) |
+                Q(title__in=options) |
+                Q(client__name__in=options) |
+                Q(client__company__in=options)
+            ).annotate(rank=SearchRank(vector, search)).order_by('-rank')
+
+        if days:
+            dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
+            projects = projects.filter(days__date__in=dates).distinct()
+
+        return projects
 
 
 class ProjectsManager(models.Manager):

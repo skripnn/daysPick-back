@@ -117,11 +117,7 @@ class ProjectView(APIView):
 
 class ClientsView(APIView):
     def get(self, request):
-        clients = request.user.profile.clients.search(
-            filter=request.GET.get('filter'),
-            name=request.GET.get('name'),
-            company=request.GET.get('company')
-        )
+        clients = request.user.profile.clients.search(**request.GET)
         return Response(ClientShortSerializer(clients, many=True).data)
 
 
@@ -193,9 +189,9 @@ class ProjectsView(APIView):
         user = UserProfile.get(request.GET.get('user'))
         asker = UserProfile.get(request.user)
         if user == asker:
-            projects = user.projects.search(request.GET.get('filter'))
+            projects = user.projects.search(**request.GET)
         else:
-            projects = user.projects.filter(creator=asker).search(request.GET.get('filter'))
+            projects = user.projects.filter(creator=asker).search(**request.GET)
         return Response(ProjectSerializer(projects, many=True).data)
 
 
