@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 from api.models import Project, Client, Day, UserProfile, Position
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer
+from .utils import phone_format
 
 date_format = '%Y-%m-%d'
 
@@ -25,36 +26,57 @@ class LoginView(APIView):
         user = authenticate(username=username, password=password)
         if user:
             if not user.profile.is_confirmed:
-                return Response({'error': 'Please confirm your account'})
+                return Response({'error': 'Аккаунт не подтверждён'})
             token, created = Token.objects.get_or_create(user=user)
-            return Response({'token': token.key,
-                             'user': user.username})
-        return Response({"error": "Wrong login or password"}, status=status.HTTP_400_BAD_REQUEST)
+            projects = user.profile.get_actual_projects(user.profile)
+            return Response({
+                'token': token.key,
+                'user': {
+                    'user': ProfileSelfSerializer(user.profile).data,
+                    'projects': ProjectSerializer(projects, many=True).data
+                }
+            })
+        return Response({"error": "Неверное имя пользователя или пароль"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class SignupView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        username = request.GET.get("username")
-        if re.match('^[^a-zA-Z]', username):
-            return Response({'error': 'Username может начаинаться только с латинской буквы'})
-        if len(username) < 4:
-            return Response({'error': 'Username не может быть короче 4х симоволов'})
-        if re.match('[^a-z0-9_]', username):
-            return Response({'error': 'Username может содержать только латинские буквы, цифры и нижнее подчеркивание'})
-        if User.objects.filter(username=username).count() != 0:
-            return Response({'error': 'Username already in use'})
+        error = self.validate(**request.GET)
+        if error:
+            return Response({'error': error})
         return Response({})
 
     def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        email = request.data.get('email')
-
-        User.objects.create_user(username=username, password=password, email=email)
-        UserProfile.get(username).send_confirmation_email()
+        error = self.validate(**request.data)
+        if error:
+            return Response({'error': error})
+        UserProfile.create(**request.data)
         return Response({})
+
+    def validate(self, **kwargs):
+        username = kwargs.get("username")
+        email = kwargs.get("email")
+        phone = kwargs.get("phone")
+        error = None
+        if username:
+            if re.match('^[^a-zA-Z]', username):
+                error = 'Имя пользователя может начаинаться только с латинской буквы'
+            elif len(username) < 4:
+                error = 'Имя пользователя не может быть короче 4х симоволов'
+            elif re.match('[^a-z0-9_]', username):
+                error = 'Имя пользователя может содержать только латинские буквы, цифры и нижнее подчеркивание'
+            elif User.objects.filter(username=username).count() != 0:
+                error = 'Имя пользователя занято'
+        elif email:
+            if UserProfile.objects.filter(email_confirm=email).count() != 0:
+                error = 'Пользователь с таким e-mail уже зарегистрирован'
+        elif phone:
+            phone = phone_format(''.join(re.findall(r'\d+', phone)))
+            if UserProfile.objects.filter(phone_confirm=phone).count() != 0:
+                error = 'Пользователь с таким телефоном уже зарегистрирован'
+        return error
 
 
 class ConfirmView(APIView):

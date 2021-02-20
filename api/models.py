@@ -110,6 +110,16 @@ class UserProfile(models.Model):
         return self.all_projects.filter(creator__isnull=True).first()
 
     @classmethod
+    def create(cls, **kwargs):
+        username = kwargs.get('username')
+        password = kwargs.pop('password')
+        profile = cls.objects.create(**kwargs, user=User.objects.create_user(username=username, password=password))
+        if profile and profile.email:
+            profile.send_confirmation_email()
+        return profile
+
+
+    @classmethod
     def get(cls, username, alt=None):
         if not username:
             return alt
@@ -198,20 +208,6 @@ class UserProfile(models.Model):
             self.update(email_confirm=self.email, email=None)
             return True
         return False
-
-    @receiver(post_save, sender=User)
-    def create_user_profile(sender, instance, created, **kwargs):
-        if created:
-            profile = UserProfile.objects.create(user=instance, email=instance.email)
-            profile.all_projects.create()
-
-    @receiver(post_save, sender=User)
-    def save_user_profile(sender, instance, **kwargs):
-        if not instance.is_superuser:
-            instance.profile.save()
-
-    def __str__(self):
-        return self.user.username
 
 
 class Client(models.Model):
