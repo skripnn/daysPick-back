@@ -144,14 +144,18 @@ class ProjectSerializer(serializers.ModelSerializer):
     creator = serializers.CharField(write_only=True, allow_null=True)
 
     def create(self, validated_data):
+        from pprint import pprint
+        pprint(validated_data)
+
         validated_data['user'] = UserProfile.get(validated_data['user'])
         validated_data['creator'] = UserProfile.get(validated_data['creator'])
         if validated_data.get('client'):
-            validated_data['client'] = Client.objects.get(user=validated_data['creator'], **validated_data['client'])
+            validated_data['client'] = Client.objects.filter(**validated_data['client']).first()
         days = validated_data.pop('days')
         days.sort(key=lambda i: i['date'])
         validated_data['date_start'] = days[0]['date']
         validated_data['date_end'] = days[-1]['date']
+
         project = Project.objects.create(**validated_data)
         for day in days:
             project.days.create(**day)

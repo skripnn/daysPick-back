@@ -38,7 +38,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.postgres',
-    'django_telegrambot',
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',
@@ -148,18 +147,3 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'static'
-
-DJANGO_TELEGRAMBOT = {
-
-    'MODE': 'WEBHOOK',
-
-    'WEBHOOK_SITE': 'https://dayspick.ru',
-    'WEBHOOK_PREFIX': 'bot',
-
-    'BOTS': [
-        {
-            'TOKEN': TELEGRAM_TOKEN
-        },
-    ],
-
-}

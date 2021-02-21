@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from api.models import Project, Client, Day, UserProfile, Position
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer
-from .utils import phone_format
+from api.utils import phone_format
 
 date_format = '%Y-%m-%d'
 
@@ -70,11 +70,11 @@ class SignupView(APIView):
             elif User.objects.filter(username=username).count() != 0:
                 error = 'Имя пользователя занято'
         elif email:
-            if UserProfile.objects.filter(email_confirm=email).count() != 0:
+            if UserProfile.objects.filter(email_confirm__in=email[0]).count() != 0:
                 error = 'Пользователь с таким e-mail уже зарегистрирован'
         elif phone:
-            phone = phone_format(''.join(re.findall(r'\d+', phone)))
-            if UserProfile.objects.filter(phone_confirm=phone).count() != 0:
+            phone = [phone_format(''.join(re.findall(r'\d+', p))) for p in phone]
+            if UserProfile.objects.filter(phone_confirm__in=phone).count() != 0:
                 error = 'Пользователь с таким телефоном уже зарегистрирован'
         return error
 

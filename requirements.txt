@@ -7,10 +7,10 @@ cryptography==3.4.6
 Django==3.1.1
 django-connection-url==0.1.2
 django-cors-headers==3.5.0
-django-telegrambot==1.0.1
 djangorestframework==3.11.1
 idna==2.10
 psycopg2-binary==2.8.6
+pyaspeller==0.2.0
 pycparser==2.20
 pyTelegramBotAPI==3.7.6
 python-telegram-bot==13.2
@@ -21,7 +21,3 @@ sqlparse==0.3.1
 tornado==6.1
 tzlocal==2.1
 urllib3==1.26.3
-
-pip~=20.2.4
-setuptools~=50.3.2
-pyaspeller~=0.2.0

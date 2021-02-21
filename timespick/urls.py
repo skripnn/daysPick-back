@@ -16,9 +16,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+from api.bot import TelegramBot
+
 urlpatterns = [
-    path('', include('django_telegrambot.urls')),
     path('admin/', admin.site.urls),
     path('api/', include("api.urls")),
-
+    path('bot/<token>', TelegramBot.as_view())
 ]
+

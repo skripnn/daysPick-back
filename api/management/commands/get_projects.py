@@ -3,7 +3,7 @@ import json
 from django.core.management import BaseCommand, CommandError
 
 from api.models import UserProfile
-from api.serializers import ProjectSerializer
+from api.serializers import ProjectSerializer, ClientSerializer
 
 
 class Command(BaseCommand):
@@ -18,7 +18,8 @@ class Command(BaseCommand):
             if not profile:
                 raise CommandError('UserProfile "%s" does not exist' % username)
             projects = profile.all_projects
+
             serializer = ProjectSerializer(projects, many=True)
-            file = open('test.txt', 'w')
+            file = open('projects.txt', 'w')
             file.write(json.dumps(serializer.data))
-            print('ok')
+            print('projects - ok')

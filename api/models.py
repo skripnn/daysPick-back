@@ -5,19 +5,10 @@ from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models
 from django.db.models import Q
-from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.utils import timezone
 from pyaspeller import YandexSpeller
 
-from .utils import phone_format
-
-null = {'null': True, 'blank': True}
-
-
-class Telegram(models.Model):
-    chat_id = models.IntegerField()
-    profile = models.ForeignKey('UserProfile', on_delete=models.CASCADE, **null, related_name='telegram_phone_confirm')
+from .utils import phone_format, null
 
 
 class ClientsManager(models.Manager):
@@ -29,7 +20,7 @@ class ClientsManager(models.Manager):
 
         search = kwargs.get('filter')
         name = kwargs.get('name')
-        company = kwargs.get('compnay')
+        company = kwargs.get('company')
         days = kwargs.get('days')
         clients = self.get_queryset()
 
@@ -48,10 +39,12 @@ class ClientsManager(models.Manager):
             ).annotate(rank=SearchRank(vector, search)).order_by('-rank')
 
         if name:
-            clients = clients.filter(name__istartswith=name)
+            name = name[0]
+            clients = clients.filter(name__icontains=name)
 
         if company:
-            clients = clients.filter(company__istartswith=company)
+            company = company[0]
+            clients = clients.filter(company__icontains=company)
 
         if days:
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
@@ -208,6 +201,12 @@ class UserProfile(models.Model):
             self.update(email_confirm=self.email, email=None)
             return True
         return False
+
+    def __str__(self):
+        return self.user.username
+
+    def __repr__(self):
+        return self.user.username
 
 
 class Client(models.Model):
