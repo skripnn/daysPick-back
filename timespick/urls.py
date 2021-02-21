@@ -21,6 +21,7 @@ from api.bot import TelegramBot
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include("api.urls")),
-    path('bot/<token>', TelegramBot.as_view())
+    path('bot/<token>', TelegramBot.as_view()),
+    path('bot/', TelegramBot.as_view()),
 ]
 

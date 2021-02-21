@@ -104,8 +104,9 @@ class UserProfile(models.Model):
 
     @classmethod
     def create(cls, **kwargs):
-        username = kwargs.get('username')
+        username = kwargs.pop('username')
         password = kwargs.pop('password')
+        password2 = kwargs.pop('password2')
         profile = cls.objects.create(**kwargs, user=User.objects.create_user(username=username, password=password))
         if profile and profile.email:
             profile.send_confirmation_email()

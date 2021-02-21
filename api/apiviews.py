@@ -4,7 +4,6 @@ from datetime import datetime
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.db.models.functions import Length
-from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -21,7 +20,7 @@ class LoginView(APIView):
     permission_classes = ()
 
     def post(self, request):
-        username = request.data.get("username")
+        username = request.data.get("username").lower()
         password = request.data.get("password")
         user = authenticate(username=username, password=password)
         if user:
@@ -36,20 +35,23 @@ class LoginView(APIView):
                     'projects': ProjectSerializer(projects, many=True).data
                 }
             })
-        return Response({"error": "Неверное имя пользователя или пароль"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Неверное имя пользователя или пароль"})
 
 
 class SignupView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        error = self.validate(**request.GET)
+        params = {key: (value[0] if isinstance(value, list) else value) for key, value in request.GET.items()}
+        error = self.validate(**params)
         if error:
             return Response({'error': error})
         return Response({})
 
     def post(self, request):
         error = self.validate(**request.data)
+        if request.data.get('password') != request.data.get('password2'):
+            error = 'Пароли не совпадают'
         if error:
             return Response({'error': error})
         UserProfile.create(**request.data)
@@ -70,10 +72,10 @@ class SignupView(APIView):
             elif User.objects.filter(username=username).count() != 0:
                 error = 'Имя пользователя занято'
         elif email:
-            if UserProfile.objects.filter(email_confirm__in=email[0]).count() != 0:
+            if UserProfile.objects.filter(email_confirm__in=email).count() != 0:
                 error = 'Пользователь с таким e-mail уже зарегистрирован'
         elif phone:
-            phone = [phone_format(''.join(re.findall(r'\d+', p))) for p in phone]
+            phone = phone_format(''.join(re.findall(r'\d+', phone)))
             if UserProfile.objects.filter(phone_confirm__in=phone).count() != 0:
                 error = 'Пользователь с таким телефоном уже зарегистрирован'
         return error

@@ -14,7 +14,7 @@ bot = TeleBot(TELEGRAM_TOKEN)
 class TelegramBot(APIView):
     permission_classes = ()
 
-    def post(self, request, token):
+    def post(self, request, token=None):
         json_str = request.body.decode('UTF-8')
         update = types.Update.de_json(json_str)
         bot.process_new_updates([update])
@@ -33,9 +33,11 @@ def start(message, username=None):
 
 
 def validation_username(text):
+    if isinstance(text, UserProfile):
+        return text
     if text.startswith('/start '):
         text = text[7:]
-    result = re.match(r'^[a-zA-Z][a-zA-Z]*$', text)
+    result = re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', text)
     if result:
         username = result.group(0).lower()
         username = UserProfile.get(username)
@@ -91,4 +93,5 @@ def error(message):
     bot.register_next_step_handler(error_message, telephone)
 
 
-bot.set_webhook(url="https://dayspick.ru/bot/" + TELEGRAM_TOKEN)
+# bot.set_webhook(url="https://b749bec136a8.ngrok.io/bot/" + TELEGRAM_TOKEN)
+# bot.set_webhook(url="https://dayspick.ru/bot/" + TELEGRAM_TOKEN)
