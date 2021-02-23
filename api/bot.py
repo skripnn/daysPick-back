@@ -4,7 +4,6 @@ from telebot import TeleBot, types
 import re
 
 from api.models import UserProfile
-from api.utils import phone_format
 from timespick.keys import TELEGRAM_TOKEN
 
 
@@ -67,7 +66,9 @@ def telephone(message, username=None):
 
 def answer(message, profile):
     if message.contact:
-        phone = phone_format(message.contact.phone_number)
+        if not message.contact.phone_number:
+            error(message)
+        phone = message.contact.phone_number
         chat_id = message.chat.id
         if not profile:
             error(message)
@@ -83,8 +84,19 @@ def answer(message, profile):
             button = types.InlineKeyboardButton('Профиль', f'https://dayspick.ru/profile/')
             keyboard = types.InlineKeyboardMarkup().add(button)
             bot.send_message(message.chat.id, f'Можешь перейти в профиль', reply_markup=keyboard)
+    elif message.text == 'Отмена':
+        keyboard = types.ReplyKeyboardRemove()
+        bot.send_message(message.chat.id, f'Команда /start - подтвердить номер', reply_markup=keyboard)
     else:
-        start(message)
+        keyboard = types.ReplyKeyboardRemove()
+        bot.send_message(message.chat.id, f'Не понимаю тебя', reply_markup=keyboard)
+        keyboard = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+        send = types.KeyboardButton(text="Отправить номер телефона", request_contact=True)
+        cancel = types.KeyboardButton(text="Отмена")
+        keyboard.add(send)
+        keyboard.add(cancel)
+        next_message = bot.send_message(message.chat.id, f'Выбери одну из команд дополнительной клавиаутры', reply_markup=keyboard)
+        bot.register_next_step_handler(next_message, answer, profile)
 
 
 def error(message):

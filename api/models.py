@@ -8,7 +8,7 @@ from django.db.models import Q
 from django.utils import timezone
 from pyaspeller import YandexSpeller
 
-from .utils import phone_format, null
+null = {'null': True, 'blank': True}
 
 
 class ClientsManager(models.Manager):
@@ -120,8 +120,8 @@ class UserProfile(models.Model):
         if isinstance(username, User):
             return cls.objects.filter(user=username).first() or alt
         if isinstance(username, str):
-            if re.match('^[0-9]{11}$', username):
-                phone = phone_format(username)
+            if re.match('^79[0-9]{9}$', username):
+                phone = username
                 return cls.objects.filter(phone_confirm=phone).first() or alt
         return cls.objects.filter(user__username=username).first() or alt
 
@@ -136,7 +136,7 @@ class UserProfile(models.Model):
             spelled = YandexSpeller().spelled(search)
             options = [option for option in spelled.split(' ') if len(option) > 1]
             phones = re.findall('9[0-9]{2}.{,2}[0-9]{3}.?[0-9]{2}.?[0-9]{2}', search)
-            phones = [phone_format('7' + ''.join(re.findall('[0-9]', phone))[:10]) for phone in phones]
+            phones = ['7' + ''.join(re.findall('[0-9]', phone)[:10]) for phone in phones]
             vector = SearchVector('user__username', 'first_name', 'last_name', 'phone')
             users = users.filter(
                 Q(user__username__icontains=search) |
@@ -163,10 +163,10 @@ class UserProfile(models.Model):
     def get_actual_projects(self, asker):
         today = timezone.now().date()
         if asker == self:
-            return self.projects.filter(Q(date_end__gte=today) | Q(is_paid=False))
+            return self.projects.filter(Q(date_end__gte=today) | Q(is_paid=False)).reverse()
         if not asker:
             return None
-        return self.projects.filter(creator=asker)
+        return self.projects.filter(creator=asker).reverse()
 
     def update(self, **kwargs):
         for key, value in kwargs.items():
@@ -290,7 +290,7 @@ class Project(models.Model):
 
 class Day(models.Model):
     class Meta:
-        ordering = ['date']
+        ordering = ['date', 'project__date_start', 'project__date_end']
 
     date = models.DateField()
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='days', null=True)

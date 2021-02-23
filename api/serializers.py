@@ -144,9 +144,6 @@ class ProjectSerializer(serializers.ModelSerializer):
     creator = serializers.CharField(write_only=True, allow_null=True)
 
     def create(self, validated_data):
-        from pprint import pprint
-        pprint(validated_data)
-
         validated_data['user'] = UserProfile.get(validated_data['user'])
         validated_data['creator'] = UserProfile.get(validated_data['creator'])
         if validated_data.get('client'):
