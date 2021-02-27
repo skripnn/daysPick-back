@@ -185,14 +185,16 @@ class UserProfile(models.Model):
                 Q(first_name__in=words) |
                 Q(last_name__in=words) |
                 Q(phone_confirm__in=phones) |
-                Q(positions__title__icontains=search) |
+                Q(tags__tag__title__icontains=search) |
+                Q(tags__tag__parent__title__icontains=search) |
                 Q(user__username__icontains=spelled) |
                 Q(first_name__icontains=spelled) |
                 Q(last_name__icontains=spelled) |
                 Q(user__username__in=options) |
                 Q(first_name__in=options) |
                 Q(last_name__in=options) |
-                Q(positions__title__icontains=spelled)
+                Q(tags__tag__title__icontains=spelled) |
+                Q(tags__tag__parent__title__icontains=spelled)
             ).annotate(rank=SearchRank(vector, search)).order_by('-rank').distinct()
         if kwargs.get('days'):
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
