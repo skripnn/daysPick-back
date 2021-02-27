@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
+from mptt.admin import DraggableMPTTAdmin
 
-from api.models import Project, UserProfile, Day, Client, Position
+from api.models import Project, UserProfile, Day, Client, Tag
 
 
 class UserProfileInline(admin.StackedInline):
@@ -55,4 +56,18 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
-admin.site.register(Position)
+
+
+admin.site.register(
+    Tag,
+    DraggableMPTTAdmin,
+    list_display=(
+        'tree_actions',
+        'indented_title',
+        'custom',
+        'category'
+    ),
+    list_display_links=(
+        'indented_title',
+    ),
+)

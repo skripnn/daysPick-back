@@ -6,9 +6,62 @@ from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
+from mptt.models import MPTTModel, TreeForeignKey
 from pyaspeller import YandexSpeller
+from django.utils.translation import gettext_lazy as _
 
 null = {'null': True, 'blank': True}
+
+
+class Tag(MPTTModel):
+    class Category(models.IntegerChoices):
+        NONE = 0, _('')
+        SOUND = 1, _('Звук')
+        LIGHT = 2, _('Свет')
+
+    category = models.IntegerField(choices=Category.choices, default=0)
+    title = models.CharField(max_length=64)
+    parent = TreeForeignKey('self', on_delete=models.SET_NULL, related_name='children', **null)
+    info = models.TextField(**null)
+    custom = models.BooleanField(default=True)
+
+    class MPTTMeta:
+        order_insertion_by = ['title']
+
+    def __str__(self):
+        return self.title
+
+
+class ProfileTagManager(models.Manager):
+    use_for_related_fields = True
+
+    def list(self):
+        return [i.tag for i in self.get_queryset()]
+
+    def update(self, data):
+        tags = []
+        for rank, i in enumerate(data):
+            tag = Tag.objects.get(**i)
+            profile_tag, created = self.get_or_create(tag=tag)
+            if profile_tag.rank != rank:
+                profile_tag.rank = rank
+                profile_tag.save()
+            tags.append(profile_tag)
+        self.set(tags)
+        ProfileTag.objects.filter(user__isnull=True).delete()
+        Tag.objects.filter(profile_tags__user__isnull=True, custom=True).delete()
+        return self.list()
+
+
+class ProfileTag(models.Model):
+    class Meta:
+        ordering = ['user', 'rank']
+
+    tag = models.ForeignKey('Tag', on_delete=models.CASCADE, related_name='profile_tags')
+    user = models.ForeignKey('UserProfile', on_delete=models.CASCADE, related_name='tags', null=True)
+    rank = models.IntegerField(default=0)
+
+    objects = ProfileTagManager()
 
 
 class ClientsManager(models.Manager):
@@ -53,24 +106,10 @@ class ClientsManager(models.Manager):
         return clients
 
 
-class Position(models.Model):
-    class Meta:
-        ordering = ['title']
-
-    title = models.CharField(max_length=64)
-
-    def __str__(self):
-        return self.title
-
-    def __repr__(self):
-        return self.title
-
-
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     first_name = models.CharField(max_length=64, **null)
     last_name = models.CharField(max_length=64, **null)
-    positions = models.ManyToManyField('Position', related_name='profiles', blank=True)
     email = models.EmailField(**null)
     email_confirm = models.EmailField(**null)
     phone = models.CharField(max_length=32, **null)

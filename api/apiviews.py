@@ -3,14 +3,13 @@ from datetime import datetime
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from django.db.models.functions import Length
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project, Client, Day, UserProfile, Position
+from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag
 from api.serializers import ProjectSerializer, ProfileSerializer, \
-    ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer
+    ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -216,30 +215,32 @@ class ProjectsView(APIView):
             projects = user.projects.filter(creator=asker).search(**request.GET)
         return Response(ProjectSerializer(projects, many=True).data)
 
-
-class PositionView(APIView):
-    def get(self, request, position):
-        position = Position.objects.filter(title__istartswith=position).order_by(Length('title').asc()).first()
-        result = ''
-        if position:
-            result = position.title
-        return Response(result)
-
-    def put(self, request, position):
-        position, created = Position.objects.get_or_create(title=position)
-        request.user.profile.positions.add(position)
-        return Response(ProfileSelfSerializer(request.user.profile).data['positions'])
-
-    def delete(self, request, position):
-        position = Position.objects.filter(title=position).first()
-        if position:
-            request.user.profile.positions.remove(position)
-        if not position.profiles.count():
-            position.delete()
-        return Response(ProfileSelfSerializer(request.user.profile).data['positions'])
-
-
 class UserProfileView(APIView):
     def post(self, request):
         profile = request.user.profile.update(**request.data)
         return Response(ProfileSelfSerializer(profile).data)
+
+
+class TagsView(APIView):
+    def get(self, request):
+        if request.GET.get('filter') == 'options':
+            tags = Tag.objects.filter(custom=False, parent=None)
+        else:
+            tags = request.user.profile.tags.list()
+        serializer = TagSerializer(tags, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        tags = request.user.profile.tags.update(request.data)
+        serializer = TagSerializer(tags, many=True)
+        return Response(serializer.data)
+
+    def put(self, request):
+        tag, created = Tag.objects.get_or_create(**request.data)
+        if created:
+            tag.custom = True
+            tag.save()
+        request.user.profile.tags.add(
+            ProfileTag.objects.create(tag=tag, rank=request.user.profile.tags.count())
+        )
+        return self.get(request)

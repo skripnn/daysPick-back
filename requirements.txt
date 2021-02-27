@@ -7,7 +7,10 @@ cryptography==3.4.6
 Django==3.1.1
 django-connection-url==0.1.2
 django-cors-headers==3.5.0
+django-js-asset==1.2.2
+django-mptt==0.11.0
 djangorestframework==3.11.1
+djangorestframework-recursive==0.1.2
 idna==2.10
 psycopg2-binary==2.8.6
 pyaspeller==0.2.0

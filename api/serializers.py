@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from api.models import Project, Day, Client, UserProfile
+from rest_framework_recursive.fields import RecursiveField
+
+from api.models import Project, Day, Client, UserProfile, Tag
 
 
 def update_data(instance, validated_data, fields: list or str):
@@ -10,14 +12,27 @@ def update_data(instance, validated_data, fields: list or str):
         setattr(instance, field, value)
 
 
-class ProfileSelfSerializer(serializers.ModelSerializer):
+class TagSerializer(serializers.ModelSerializer):
     class Meta:
-        model = UserProfile
-        exclude = ['id', 'user']
+        model = Tag
+        read_only_fields = ['id', 'childs']
+        fields = ['id', 'title', 'info', 'custom', 'childs', 'category']
 
-    username = serializers.CharField(read_only=True)
-    full_name = serializers.CharField(read_only=True)
-    positions = serializers.StringRelatedField(many=True)
+    childs = serializers.ListField(read_only=True, source='children.all', child=RecursiveField())
+
+    def to_representation(self, obj):
+        ret = super().to_representation(obj)
+
+        if not ret.get('childs'):
+            ret.pop('childs')
+
+        return ret
+
+    def create(self, validated_data):
+        if self.initial_data.get('parent'):
+            validated_data['parent'] = Tag.objects.get(id=self.initial_data.get('parent')['id'])
+        tag, created = Tag.objects.get_or_create(**validated_data)
+        return tag
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -27,7 +42,19 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
-    positions = serializers.StringRelatedField(many=True)
+
+    def to_representation(self, obj):
+        ret = super().to_representation(obj)
+
+        tags = obj.tags.list()
+        serializer = TagSerializer(tags, many=True)
+        ret['tags'] = serializer.data
+
+        return ret
+
+
+class ProfileSelfSerializer(ProfileSerializer):
+    pass
 
 
 class ClientProjectSerializer(serializers.ModelSerializer):
@@ -172,5 +199,4 @@ class ProjectSerializer(serializers.ModelSerializer):
         instance.date_end = days[-1]['date']
         instance.save()
         return instance
-
 
