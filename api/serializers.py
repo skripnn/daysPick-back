@@ -93,7 +93,7 @@ class ClientShortSerializer(serializers.ModelSerializer):
 class ProjectShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ['id', 'title', 'client', 'money', 'is_paid']
+        fields = ['id', 'title', 'client', 'money', 'is_paid', 'is_wait']
         read_only_fields = ['id']
 
     client = ClientShortSerializer()
@@ -188,7 +188,9 @@ class ProjectSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         if validated_data.get('client'):
             validated_data['client'] = Client.objects.get(user=instance.user, **validated_data['client'])
-        fields = ['client', 'title', 'money', 'money_per_day', 'money_calculating', 'info', 'is_paid']
+        fields = ['client', 'title', 'money', 'money_per_day', 'money_calculating', 'info', 'is_paid', 'is_wait']
+        if validated_data['is_paid']:
+            validated_data['is_wait'] = False
         update_data(instance, validated_data, fields)
 
         days = validated_data.pop('days')

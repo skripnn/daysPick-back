@@ -192,7 +192,7 @@ class CalendarView(APIView):
 
         all_days = Day.objects.filter(date__range=[start, end], project__user__user__username=user).exclude(project_id=project_id)
         if request.user.is_anonymous:
-            days_off = all_days.dates('date', 'day')
+            days_off = all_days.exclude(project__is_wait=True).dates('date', 'day')
             days = {}
         else:
             days_off = all_days.exclude(project__creator=request.user.profile).dates('date', 'day')
@@ -214,6 +214,7 @@ class ProjectsView(APIView):
         else:
             projects = user.projects.filter(creator=asker).search(**request.GET)
         return Response(ProjectSerializer(projects, many=True).data)
+
 
 class UserProfileView(APIView):
     def post(self, request):

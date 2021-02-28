@@ -318,6 +318,7 @@ class Project(models.Model):
     money_calculating = models.BooleanField(default=False)
     info = models.TextField(**null)
     is_paid = models.BooleanField(default=False)
+    is_wait = models.BooleanField(default=False)
 
     objects = ProjectsManager()
 
