@@ -78,7 +78,8 @@ class ClientsManager(models.Manager):
         clients = self.get_queryset()
 
         if search:
-            search = search[0]
+            if isinstance(search, list):
+                search = search[0]
             spelled = YandexSpeller().spelled(search)
             options = [option for option in spelled.split(' ') if len(option) > 1]
             vector = SearchVector('name', 'company')
@@ -92,11 +93,13 @@ class ClientsManager(models.Manager):
             ).annotate(rank=SearchRank(vector, search)).order_by('-rank')
 
         if name:
-            name = name[0]
+            if isinstance(name, list):
+                name = name[0]
             clients = clients.filter(name__icontains=name)
 
         if company:
-            company = company[0]
+            if isinstance(company, list):
+                company = company[0]
             clients = clients.filter(company__icontains=company)
 
         if days:
@@ -167,8 +170,15 @@ class UserProfile(models.Model):
     @classmethod
     def search(cls, **kwargs):
         users = cls.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True)
+        if kwargs.get('category'):
+            category = kwargs['category']
+            if isinstance(category, list):
+                category = category[0]
+            users = users.filter(tags__tag__category=category).distinct()
         if kwargs.get('filter'):
-            search = kwargs['filter'][0]
+            search = kwargs['filter']
+            if isinstance(search, list):
+                search = search[0]
             words = search.split(' ')
             if len(words) == 1 and not words[0]:
                 return []
@@ -273,7 +283,8 @@ class ProjectsQuerySet(models.QuerySet):
         projects = self
 
         if search:
-            search = search[0]
+            if isinstance(search, list):
+                search = search[0]
             spelled = YandexSpeller().spelled(search)
             options = [option for option in spelled.split(' ') if len(option) > 1]
             vector = SearchVector('title', 'client__name', 'client__company')

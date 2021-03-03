@@ -141,6 +141,10 @@ class ClientsView(APIView):
         clients = request.user.profile.clients.search(**request.GET)
         return Response(ClientShortSerializer(clients, many=True).data)
 
+    def post(self, request):
+        clients = request.user.profile.clients.search(**request.data)
+        return Response(ClientShortSerializer(clients, many=True).data)
+
 
 class ClientView(APIView):
     def get(self, request, pk):
@@ -180,6 +184,10 @@ class UsersView(APIView):
         users = UserProfile.search(**request.GET)
         return Response(ProfileSerializer(users, many=True).data)
 
+    def post(self, request):
+        users = UserProfile.search(**request.data)
+        return Response(ProfileSerializer(users, many=True).data)
+
 
 class CalendarView(APIView):
     permission_classes = ()
@@ -213,6 +221,15 @@ class ProjectsView(APIView):
             projects = user.projects.search(**request.GET)
         else:
             projects = user.projects.filter(creator=asker).search(**request.GET)
+        return Response(ProjectSerializer(projects, many=True).data)
+
+    def post(self, request):
+        user = UserProfile.get(request.data.get('user'))
+        asker = UserProfile.get(request.user)
+        if user == asker:
+            projects = user.projects.search(**request.data)
+        else:
+            projects = user.projects.filter(creator=asker).search(**request.data)
         return Response(ProjectSerializer(projects, many=True).data)
 
 
