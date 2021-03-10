@@ -3,6 +3,7 @@ from datetime import datetime
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from django.core.paginator import Paginator
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,6 +13,18 @@ from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer
 
 date_format = '%Y-%m-%d'
+
+
+def list_paginator(_class, data, serializer):
+    page = int(data.get('page', 0))
+    items = _class.search(**data)
+    paginator = Paginator(items, 15)
+    pages = paginator.num_pages
+    result = paginator.page(page + 1).object_list
+    return Response({
+        'list': serializer(result, many=True).data,
+        'pages': pages
+    })
 
 
 class LoginView(APIView):
@@ -138,12 +151,10 @@ class ProjectView(APIView):
 
 class ClientsView(APIView):
     def get(self, request):
-        clients = request.user.profile.clients.search(**request.GET)
-        return Response(ClientShortSerializer(clients, many=True).data)
+        return list_paginator(request.user.profile.clients, request.GET, ClientShortSerializer)
 
     def post(self, request):
-        clients = request.user.profile.clients.search(**request.data)
-        return Response(ClientShortSerializer(clients, many=True).data)
+        return list_paginator(request.user.profile.clients, request.data, ClientShortSerializer)
 
 
 class ClientView(APIView):
@@ -181,12 +192,10 @@ class UsersView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        users = UserProfile.search(**request.GET)
-        return Response(ProfileSerializer(users, many=True).data)
+        return list_paginator(UserProfile, request.GET, ProfileSerializer)
 
     def post(self, request):
-        users = UserProfile.search(**request.data)
-        return Response(ProfileSerializer(users, many=True).data)
+        return list_paginator(UserProfile, request.data, ProfileSerializer)
 
 
 class CalendarView(APIView):
@@ -215,22 +224,22 @@ class CalendarView(APIView):
 
 class ProjectsView(APIView):
     def get(self, request):
-        user = UserProfile.get(request.GET.get('user'))
-        asker = UserProfile.get(request.user)
-        if user == asker:
-            projects = user.projects.search(**request.GET)
-        else:
-            projects = user.projects.filter(creator=asker).search(**request.GET)
-        return Response(ProjectSerializer(projects, many=True).data)
+        return self.search(request, request.GET)
 
     def post(self, request):
-        user = UserProfile.get(request.data.get('user'))
+        return self.search(request, request.data)
+
+    def search(self, request, data):
+        user = UserProfile.get(data.get('user'))
         asker = UserProfile.get(request.user)
+        if not user:
+            user = asker
         if user == asker:
-            projects = user.projects.search(**request.data)
+            projects = user.projects
         else:
-            projects = user.projects.filter(creator=asker).search(**request.data)
-        return Response(ProjectSerializer(projects, many=True).data)
+            projects = user.projects.filter(creator=asker)
+
+        return list_paginator(projects, data, ProjectSerializer)
 
 
 class UserProfileView(APIView):
