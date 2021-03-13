@@ -24,6 +24,8 @@ urlpatterns = [
     path('signup/', SignupView.as_view()),
     path('confirm/', ConfirmView.as_view()),
 
+    # path('vkauth/', VkAuth.as_view()),
+
     path('user/<str:username>/', UserView.as_view()),
     path('users/', UsersView.as_view()),
 

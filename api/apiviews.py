@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from pprint import pprint
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
@@ -181,10 +182,16 @@ class DaysOffView(APIView):
 
     def post(self, request):
         dop = request.user.profile.days_off_project
-        date = datetime.strptime(request.data, date_format).date()
-        day, created = Day.objects.get_or_create(project=dop, date=date)
-        if not created:
-            day.delete()
+        pick = request.data.get('pick')
+        days = request.data.get('days', [])
+        dates = [datetime.strptime(day, date_format).date() for day in days]
+        if pick:
+            existing = [day.date for day in Day.objects.filter(project=dop, date__in=dates)]
+            dates = list(set(dates) - set(existing))
+            objects = [Day(project=dop, date=date) for date in dates]
+            Day.objects.bulk_create(objects)
+        else:
+            Day.objects.filter(project=dop, date__in=dates).delete()
         return Response({})
 
 
@@ -271,3 +278,14 @@ class TagsView(APIView):
             ProfileTag.objects.create(tag=tag, rank=request.user.profile.tags.count())
         )
         return self.get(request)
+
+#
+# class VkAuth(APIView):
+#     permission_classes = ()
+#
+#     def get(self, request):
+#         import requests
+#         r = requests.get('https://api.vk.com/oauth/access_token', params=request.GET)
+#         import json
+#         r = json.loads(r.text)
+#         return Response(r)
