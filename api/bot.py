@@ -4,7 +4,7 @@ from telebot import TeleBot, types
 import re
 
 from api.models import UserProfile
-from timespick.keys import TELEGRAM_TOKEN
+from timespick.keys import TELEGRAM_TOKEN, admin_ids
 
 
 bot = TeleBot(TELEGRAM_TOKEN)
@@ -97,6 +97,11 @@ def answer(message, profile):
         keyboard.add(cancel)
         next_message = bot.send_message(message.chat.id, f'Выбери одну из команд дополнительной клавиаутры', reply_markup=keyboard)
         bot.register_next_step_handler(next_message, answer, profile)
+
+
+def admins_notification(message):
+    for i in admin_ids:
+        bot.send_message(i, message)
 
 
 def error(message):

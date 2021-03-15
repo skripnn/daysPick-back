@@ -142,7 +142,7 @@ class UserProfile(models.Model):
 
     @property
     def days_off_project(self):
-        return self.all_projects.filter(creator__isnull=True).first()
+        return self.all_projects.get_or_create(creator__isnull=True)[0]
 
     @classmethod
     def create(cls, **kwargs):
@@ -150,6 +150,8 @@ class UserProfile(models.Model):
         password = kwargs.pop('password')
         password2 = kwargs.pop('password2')
         profile = cls.objects.create(**kwargs, user=User.objects.create_user(username=username, password=password))
+        from api.bot import admins_notification
+        admins_notification(f'Новый пользователь зарегистрирован.\nusername: {username}')
         if profile and profile.email:
             profile.send_confirmation_email()
         return profile

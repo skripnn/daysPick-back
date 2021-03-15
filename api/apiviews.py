@@ -35,11 +35,12 @@ class LoginView(APIView):
         username = request.data.get("username").lower()
         password = request.data.get("password")
         user = authenticate(username=username, password=password)
-        if user:
+        profile = UserProfile.get(user)
+        if profile:
             if not user.profile.is_confirmed:
                 return Response({'error': 'Аккаунт не подтверждён'})
             token, created = Token.objects.get_or_create(user=user)
-            projects = user.profile.get_actual_projects(user.profile)
+            projects = profile.get_actual_projects(profile)
             return Response({
                 'token': token.key,
                 'user': {
@@ -219,7 +220,10 @@ class CalendarView(APIView):
             days_off = all_days.exclude(project__is_wait=True).dates('date', 'day')
             days = {}
         else:
-            days_off = all_days.exclude(project__creator=request.user.profile).dates('date', 'day')
+            days_off = all_days.exclude(project__creator=request.user.profile)
+            if request.user.username != user:
+                days_off = days_off.exclude(project__is_wait=True)
+            days_off = days_off.dates('date', 'day')
             days = all_days.filter(project__creator=request.user.profile)
             days = CalendarDaySerializer(days, many=True).dict()
 
