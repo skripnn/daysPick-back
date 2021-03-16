@@ -118,6 +118,9 @@ class UserProfile(models.Model):
     phone = models.CharField(max_length=32, **null)
     phone_confirm = models.CharField(max_length=32, **null)
     telegram_chat_id = models.IntegerField(**null)
+    is_public = models.BooleanField(default=False)
+    show_email = models.BooleanField(default=True)
+    show_phone = models.BooleanField(default=True)
 
     @property
     def is_confirmed(self):
@@ -171,7 +174,7 @@ class UserProfile(models.Model):
 
     @classmethod
     def search(cls, **kwargs):
-        users = cls.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True)
+        users = cls.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True).exclude(is_public=False)
         if kwargs.get('category'):
             category = kwargs['category']
             if isinstance(category, list):
@@ -223,9 +226,19 @@ class UserProfile(models.Model):
 
     def update(self, **kwargs):
         for key, value in kwargs.items():
-            setattr(self, key, value)
-            if key == 'email' and value:
-                self.send_confirmation_email()
+            try:
+                if key == 'phone_confirm' and not self.phone_confirm:
+                    self.is_public = True
+                setattr(self, key, value)
+                if key == 'email' and value:
+                    self.send_confirmation_email()
+            except AttributeError:
+                if key == 'username' and value:
+                    self.user.username = value
+                    self.user.save()
+                if key == 'password' and value:
+                    self.user.set_password(value)
+                    self.user.save()
         self.save()
         return self
 
