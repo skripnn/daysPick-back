@@ -1,3 +1,4 @@
+import os
 import re
 from datetime import datetime
 
@@ -5,6 +6,7 @@ from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models
 from django.db.models import Q
+from django.dispatch import receiver
 from django.utils import timezone
 from mptt.models import MPTTModel, TreeForeignKey
 from pyaspeller import YandexSpeller
@@ -121,6 +123,8 @@ class UserProfile(models.Model):
     is_public = models.BooleanField(default=False)
     show_email = models.BooleanField(default=True)
     show_phone = models.BooleanField(default=True)
+    avatar = models.ImageField(upload_to='avatars', **null)
+    photo = models.ImageField(upload_to='photos', **null)
 
     @property
     def is_confirmed(self):
@@ -227,6 +231,13 @@ class UserProfile(models.Model):
     def update(self, **kwargs):
         for key, value in kwargs.items():
             try:
+                if key in ['avatar', 'photo'] and value:
+                    if isinstance(value, list):
+                        value = value[0]
+                    import uuid
+                    ext = value.content_type.split('/')[-1]
+                    filename = uuid.uuid4().hex
+                    value.name = f'{filename}.{ext}'
                 if key == 'phone_confirm' and not self.phone_confirm:
                     self.is_public = True
                 setattr(self, key, value)
@@ -366,3 +377,42 @@ class Day(models.Model):
 
     def __str__(self):
         return ' - '.join([str(self.project), str(self.date)])
+
+
+@receiver(models.signals.post_delete, sender=UserProfile)
+def auto_delete_file_on_delete(sender, instance, **kwargs):
+    """
+    Deletes file from filesystem
+    when corresponding 'MediaFile' object is deleted.
+    """
+    def deleting(obj):
+        if obj and os.path.isfile(obj.path):
+            os.remove(instance.avatar.path)
+
+    deleting(instance.avatar)
+    deleting(instance.photo)
+
+
+
+@receiver(models.signals.pre_save, sender=UserProfile)
+def auto_delete_file_on_change(sender, instance, **kwargs):
+    """
+    Deletes old file from filesystem
+    when corresponding 'MediaFile' object is updated
+    with new file.
+    """
+    def deleting(old_file, new_file):
+        if old_file and old_file != new_file:
+            if os.path.isfile(old_file.path):
+                os.remove(old_file.path)
+
+    if not instance.pk:
+        return False
+
+    try:
+        profile = UserProfile.objects.get(pk=instance.pk)
+    except UserProfile.DoesNotExist:
+        return False
+
+    deleting(profile.avatar or None, instance.avatar)
+    deleting(profile.photo or None, instance.photo)

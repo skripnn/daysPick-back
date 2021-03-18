@@ -87,7 +87,7 @@ class ClientShortSerializer(serializers.ModelSerializer):
         return fullname
 
     def create(self, validated_data):
-        return Client.objects.create(**validated_data)
+        return Client.objects.get_or_create(**validated_data)[0]
 
 
 class ProjectShortSerializer(serializers.ModelSerializer):

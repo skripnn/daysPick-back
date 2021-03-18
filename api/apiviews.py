@@ -259,6 +259,12 @@ class UserProfileView(APIView):
         return Response(ProfileSelfSerializer(profile).data)
 
 
+class ImgView(APIView):
+    def post(self, request):
+        profile = request.user.profile.update(**request.FILES)
+        return Response(ProfileSelfSerializer(profile).data)
+
+
 class TagsView(APIView):
     def get(self, request):
         if request.GET.get('filter') == 'options':
