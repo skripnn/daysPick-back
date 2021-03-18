@@ -217,7 +217,8 @@ class UserProfile(models.Model):
             ).annotate(rank=SearchRank(vector, search)).order_by('-rank').distinct()
         if kwargs.get('days'):
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
-            users = users.exclude(all_projects__days__date__in=dates)
+            busy_users = users.filter(all_projects__days__date__in=dates, all_projects__is_wait=False).values('pk')
+            users = users.exclude(pk__in=busy_users)
         return users
 
     def get_actual_projects(self, asker):
