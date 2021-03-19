@@ -1,6 +1,7 @@
 import os
 import re
 from datetime import datetime
+from functools import reduce
 
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
@@ -163,7 +164,6 @@ class UserProfile(models.Model):
             profile.send_confirmation_email()
         return profile
 
-
     @classmethod
     def get(cls, username, alt=None):
         if not username:
@@ -178,7 +178,7 @@ class UserProfile(models.Model):
 
     @classmethod
     def search(cls, **kwargs):
-        users = cls.objects.exclude(email_confirm__isnull=True, phone_confirm__isnull=True).exclude(is_public=False)
+        users = cls.objects.exclude(is_public=False)
         if kwargs.get('category'):
             category = kwargs['category']
             if isinstance(category, list):
@@ -193,33 +193,78 @@ class UserProfile(models.Model):
                 return []
             spelled = YandexSpeller().spelled(search)
             options = [option for option in spelled.split(' ') if len(option) > 1]
-            phones = re.findall('9[0-9]{2}.{,2}[0-9]{3}.?[0-9]{2}.?[0-9]{2}', search)
-            phones = ['7' + ''.join(re.findall('[0-9]', phone)[:10]) for phone in phones]
-            vector = SearchVector('user__username', 'first_name', 'last_name', 'phone')
-            users = users.filter(
+            digits = ''.join(re.findall('[0-9]', search))
+            phone_templates = [match.group(1) for match in re.finditer(r'(?=(\d{9}))', digits)] or ['-']
+
+            phone_endswith = users.filter(
+                reduce(lambda q, value: q | Q(phone_confirm__endswith=value), phone_templates, Q())
+            )
+
+            phone_contains = users.filter(
+                reduce(lambda q, value: q | Q(phone_confirm__icontains=value), phone_templates, Q())
+            )
+
+            name_exact = users.filter(
+                Q(user__username__iexact=search) |
+                Q(first_name__iexact=search) |
+                Q(last_name__iexact=search) |
+                Q(user__username__iexact=spelled) |
+                Q(first_name__iexact=spelled) |
+                Q(last_name__iexact=spelled)
+            )
+
+            name_words = users.filter(
+                Q(user__username__search=search) |
+                Q(first_name__search=search) |
+                Q(last_name__search=search) |
+                Q(user__username__search=spelled) |
+                Q(first_name__search=spelled) |
+                Q(last_name__search=spelled)
+            )
+
+            name_contains = users.filter(
                 Q(user__username__icontains=search) |
                 Q(first_name__icontains=search) |
                 Q(last_name__icontains=search) |
                 Q(user__username__in=words) |
                 Q(first_name__in=words) |
                 Q(last_name__in=words) |
-                Q(phone_confirm__in=phones) |
-                Q(tags__tag__title__icontains=search) |
-                Q(tags__tag__parent__title__icontains=search) |
                 Q(user__username__icontains=spelled) |
                 Q(first_name__icontains=spelled) |
                 Q(last_name__icontains=spelled) |
                 Q(user__username__in=options) |
                 Q(first_name__in=options) |
-                Q(last_name__in=options) |
+                Q(last_name__in=options)
+            )
+
+            tag_exact = users.filter(
+                Q(tags__tag__title__iexact=search) |
+                Q(tags__tag__title__iexact=spelled) |
+                Q(tags__tag__parent__title__iexact=search) |
+                Q(tags__tag__parent__title__iexact=spelled)
+            ).order_by('tags__rank')
+
+            tag_words = users.filter(
+                Q(tags__tag__title__search=search) |
+                Q(tags__tag__title__search=spelled) |
+                Q(tags__tag__parent__title__search=search) |
+                Q(tags__tag__parent__title__search=spelled)
+            ).order_by('tags__rank')
+
+            tag_contains = users.filter(
+                Q(tags__tag__title__icontains=search) |
+                Q(tags__tag__parent__title__icontains=search) |
                 Q(tags__tag__title__icontains=spelled) |
                 Q(tags__tag__parent__title__icontains=spelled)
-            ).annotate(rank=SearchRank(vector, search)).order_by('-rank').distinct()
+            ).order_by('tags__rank')
+
+            users = name_exact | phone_endswith | tag_exact | name_words | tag_words | name_contains | tag_contains | phone_contains
+
         if kwargs.get('days'):
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
             busy_users = users.filter(all_projects__days__date__in=dates, all_projects__is_wait=False).values('pk')
             users = users.exclude(pk__in=busy_users)
-        return users
+        return users.distinct()
 
     def get_actual_projects(self, asker):
         today = timezone.now().date()
@@ -386,13 +431,13 @@ def auto_delete_file_on_delete(sender, instance, **kwargs):
     Deletes file from filesystem
     when corresponding 'MediaFile' object is deleted.
     """
+
     def deleting(obj):
         if obj and os.path.isfile(obj.path):
             os.remove(instance.avatar.path)
 
     deleting(instance.avatar)
     deleting(instance.photo)
-
 
 
 @receiver(models.signals.pre_save, sender=UserProfile)
@@ -402,6 +447,7 @@ def auto_delete_file_on_change(sender, instance, **kwargs):
     when corresponding 'MediaFile' object is updated
     with new file.
     """
+
     def deleting(old_file, new_file):
         if old_file and old_file != new_file:
             if os.path.isfile(old_file.path):
