@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.models import User
 from mptt.admin import DraggableMPTTAdmin
 
-from api.models import Project, UserProfile, Day, Client, Tag
+from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount
 
 
 class UserProfileInline(admin.StackedInline):
@@ -13,6 +13,34 @@ class UserProfileInline(admin.StackedInline):
 
 class ClientsInline(admin.StackedInline):
     model = Client
+
+
+class TagInline(admin.TabularInline):
+    model = Tag
+
+
+class TagsInline(admin.TabularInline):
+    model = ProfileTag
+    extra = 0
+    can_delete = False
+    fieldsets = [
+        ('None', {'fields': ('title', 'custom', 'parent')})
+    ]
+    readonly_fields = ('title', 'custom', 'parent')
+
+    def title(self, obj):
+        return obj.tag.title
+
+    def custom(self, obj):
+        return obj.tag.custom
+
+    def parent(self, obj):
+        return obj.tag.parent
+
+    def has_add_permission(self, request, obj):
+        return False
+
+    custom.boolean = True
 
 
 class UserAdmin(admin.ModelAdmin):
@@ -52,6 +80,17 @@ class ClientAdmin(admin.ModelAdmin):
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'first_name', 'last_name', 'is_confirmed')
+    inlines = (TagsInline, )
+
+
+@admin.register(ProfileTag)
+class ProfileTagAdmin(admin.ModelAdmin):
+    list_display = ('tag', 'rank', 'user')
+
+
+@admin.register(FacebookAccount)
+class ProfileTagAdmin(admin.ModelAdmin):
+    pass
 
 
 admin.site.unregister(User)

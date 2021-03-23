@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_recursive.fields import RecursiveField
 
-from api.models import Project, Day, Client, UserProfile, Tag
+from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount
 
 
 def update_data(instance, validated_data, fields: list or str):
@@ -10,6 +10,20 @@ def update_data(instance, validated_data, fields: list or str):
     for field in fields:
         value = validated_data.get(field, getattr(instance, field))
         setattr(instance, field, value)
+
+
+class FacebookAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FacebookAccount
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.get('data'):
+            if isinstance(kwargs['data']['picture'], dict):
+                kwargs['data']['picture'] = kwargs['data']['picture']['data'].get('url')
+        super().__init__(*args, **kwargs)
+        if not self.instance and getattr(self, 'initial_data', None):
+            self.instance = FacebookAccount.objects.filter(id=self.initial_data['id']).first()
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -42,6 +56,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
+    facebook_account = FacebookAccountSerializer(allow_null=True)
 
     def to_representation(self, obj):
         ret = super().to_representation(obj)
@@ -51,6 +66,15 @@ class ProfileSerializer(serializers.ModelSerializer):
         ret['tags'] = serializer.data
 
         return ret
+
+    def page(self, asker, token=False):
+        result = {
+            'user': self.data,
+            'projects': ProjectSerializer(self.instance.get_actual_projects(asker), many=True).data
+        }
+        if token:
+            result['token'] = self.instance.token()
+        return result
 
 
 class ProfileSelfSerializer(ProfileSerializer):
@@ -202,3 +226,14 @@ class ProjectSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
+
+class UserPageSerializer(serializers.Serializer):
+
+    def to_representation(self, obj):
+        ret = super().to_representation(obj)
+        ret['token'] = obj.token()
+        ret['user'] = {
+            'user': ProfileSelfSerializer(obj).data,
+            'projects': ProjectSerializer(obj.get_actual_projects(obj), many=True).data
+        }
+        return ret

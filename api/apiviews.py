@@ -1,11 +1,9 @@
 import re
 from datetime import datetime
-from pprint import pprint
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
-from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -37,18 +35,32 @@ class LoginView(APIView):
         user = authenticate(username=username, password=password)
         profile = UserProfile.get(user)
         if profile:
-            if not user.profile.is_confirmed:
-                return Response({'error': 'Аккаунт не подтверждён'})
-            token, created = Token.objects.get_or_create(user=user)
-            projects = profile.get_actual_projects(profile)
-            return Response({
-                'token': token.key,
-                'user': {
-                    'user': ProfileSelfSerializer(user.profile).data,
-                    'projects': ProjectSerializer(projects, many=True).data
-                }
-            })
+            if profile.is_confirmed:
+                return Response(ProfileSerializer(profile).page(asker=profile, token=True))
+            return Response({'error': 'Аккаунт не подтверждён'})
         return Response({"error": "Неверное имя пользователя или пароль"})
+
+
+class LoginFacebookView(APIView):
+    permission_classes = ()
+
+    def post(self, request):
+        profile = UserProfile.objects.filter(facebook_account__id=request.data['id']).first()
+        if not profile and request.data.get('email'):
+            profile = UserProfile.objects.filter(email_confirm=request.data['email']).first()
+            if profile:
+                profile.update(facebook_account=request.data)
+        if not profile:
+            data = {
+                'first_name': request.data.get('first_name'),
+                'last_name': request.data.get('last_name'),
+                'email_confirm': request.data.get('email')
+            }
+            username = re.sub(r'\s', '', request.data.get('name'))
+            if not User.objects.filter(username__startswith=username).first():
+                data['username'] = username
+            profile = UserProfile.create(**data).update(facebook_account=request.data)
+        return Response(ProfileSerializer(profile).page(asker=profile, token=True))
 
 
 class SignupView(APIView):
@@ -108,20 +120,10 @@ class UserView(APIView):
 
     def get(self, request, username=None):
         profile = UserProfile.get(username)
-        request_profile = UserProfile.get(request.user)
+        asker = UserProfile.get(request.user)
         if not profile:
             return Response(status=404)
-        if profile == request_profile:
-            user = ProfileSelfSerializer(profile).data
-        else:
-            user = ProfileSerializer(profile).data
-        projects = profile.get_actual_projects(request_profile)
-        if projects:
-            projects = ProjectSerializer(projects, many=True).data
-        return Response({
-            'user': user,
-            'projects': projects or []
-        })
+        return Response(ProfileSerializer(profile).page(asker))
 
 
 class ProjectView(APIView):
@@ -281,11 +283,18 @@ class TagsView(APIView):
 
     def put(self, request):
         tag, created = Tag.objects.get_or_create(**request.data)
+        tags = []
+        count = request.user.profile.tags.count()
         if created:
             tag.custom = True
             tag.save()
+        for i in tag.children.all():
+            tags.append(i)
+        if not tags:
+            tags.append(tag)
+
         request.user.profile.tags.add(
-            ProfileTag.objects.create(tag=tag, rank=request.user.profile.tags.count())
+            *[ProfileTag.objects.create(tag=i, rank=count + n) for n, i in enumerate(tags)]
         )
         return self.get(request)
 

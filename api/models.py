@@ -117,10 +117,11 @@ class UserProfile(models.Model):
     first_name = models.CharField(max_length=64, **null)
     last_name = models.CharField(max_length=64, **null)
     email = models.EmailField(**null)
-    email_confirm = models.EmailField(**null)
+    email_confirm = models.EmailField(**null, unique=True)
     phone = models.CharField(max_length=32, **null)
-    phone_confirm = models.CharField(max_length=32, **null)
-    telegram_chat_id = models.IntegerField(**null)
+    phone_confirm = models.CharField(max_length=32, **null, unique=True)
+    telegram_chat_id = models.IntegerField(**null, unique=True)
+    facebook_account = models.OneToOneField('FacebookAccount', on_delete=models.SET_NULL, **null, related_name='profile')
     is_public = models.BooleanField(default=False)
     show_email = models.BooleanField(default=True)
     show_phone = models.BooleanField(default=True)
@@ -129,7 +130,7 @@ class UserProfile(models.Model):
 
     @property
     def is_confirmed(self):
-        return bool(self.email_confirm or self.phone_confirm)
+        return bool(self.email_confirm or self.phone_confirm or self.facebook_account)
 
     @property
     def full_name(self):
@@ -154,14 +155,25 @@ class UserProfile(models.Model):
 
     @classmethod
     def create(cls, **kwargs):
-        username = kwargs.pop('username')
-        password = kwargs.pop('password')
-        password2 = kwargs.pop('password2')
-        profile = cls.objects.create(**kwargs, user=User.objects.create_user(username=username, password=password))
-        from api.bot import admins_notification
-        admins_notification(f'Новый пользователь зарегистрирован.\nusername: {username}')
-        if profile and profile.email:
-            profile.send_confirmation_email()
+        username = kwargs.pop('username', f'user{UserProfile.objects.count() + 1}')
+        import uuid
+        password = kwargs.pop('password', uuid.uuid4().hex)
+        password2 = kwargs.pop('password2', None)
+        from django.db import IntegrityError
+        try:
+            profile = cls.objects.create(user=User.objects.create_user(username=username, password=password), **kwargs)
+            from api.bot import admins_notification
+            admins_notification(f'Новый пользователь зарегистрирован.\nusername: {username}')
+            if profile and profile.email:
+                profile.send_confirmation_email()
+        except IntegrityError as error:
+            user = User.objects.filter(username=username).first()
+            if user:
+                user.delete()
+            import re
+            m = re.search(r'Key\s\((.+)\)=\((.+)\)', error.args[0])
+            key, value = m.group(1), m.group(2)
+            profile = cls.objects.get(**{f'{key}': value})
         return profile
 
     @classmethod
@@ -242,7 +254,7 @@ class UserProfile(models.Model):
                 Q(tags__tag__title__iexact=spelled) |
                 Q(tags__tag__parent__title__iexact=search) |
                 Q(tags__tag__parent__title__iexact=spelled)
-            ).order_by('tags__rank')
+            ).annotate(d=0).order_by('tags__rank')
 
             tag_words = users.filter(
                 Q(tags__tag__title__search=search) |
@@ -266,17 +278,33 @@ class UserProfile(models.Model):
             users = users.exclude(pk__in=busy_users)
         return users.distinct()
 
+    def token(self):
+        from rest_framework.authtoken.models import Token
+        token, created = Token.objects.get_or_create(user=self.user)
+        return token.key
+
     def get_actual_projects(self, asker):
         today = timezone.now().date()
         if asker == self:
             return self.projects.filter(Q(date_end__gte=today) | Q(is_paid=False)).reverse()
         if not asker:
-            return None
+            return []
         return self.projects.filter(creator=asker).reverse()
 
     def update(self, **kwargs):
         for key, value in kwargs.items():
             try:
+                if key == 'facebook_account' and value:
+                    from api.serializers import FacebookAccountSerializer
+                    fb = FacebookAccountSerializer(data=value)
+                    if fb.is_valid():
+                        fb.save()
+                        value = fb.instance
+                        fb_profile = getattr(fb.instance, 'profile', None)
+                        if fb_profile and fb_profile != self:
+                            fb.instance.profile.update(facebook_account=None)
+                    else:
+                        continue
                 if key in ['avatar', 'photo'] and value:
                     if isinstance(value, list):
                         value = value[0]
@@ -289,7 +317,8 @@ class UserProfile(models.Model):
                 setattr(self, key, value)
                 if key == 'email' and value:
                     self.send_confirmation_email()
-            except AttributeError:
+            except AttributeError as error:
+                print(error)
                 if key == 'username' and value:
                     self.user.username = value
                     self.user.save()
@@ -425,6 +454,15 @@ class Day(models.Model):
         return ' - '.join([str(self.project), str(self.date)])
 
 
+class FacebookAccount(models.Model):
+    id = models.CharField(max_length=64, unique=True, primary_key=True)
+    name = models.CharField(max_length=64, **null)
+    picture = models.URLField(**null)
+
+    def __str__(self):
+        return f'{self.name } ({self.id})'
+
+
 @receiver(models.signals.post_delete, sender=UserProfile)
 def auto_delete_file_on_delete(sender, instance, **kwargs):
     """
@@ -463,3 +501,8 @@ def auto_delete_file_on_change(sender, instance, **kwargs):
 
     deleting(profile.avatar or None, instance.avatar)
     deleting(profile.photo or None, instance.photo)
+
+
+@receiver(models.signals.post_delete, sender=UserProfile)
+def auto_delete_user(sender, instance, **kwargs):
+    instance.user.delete()

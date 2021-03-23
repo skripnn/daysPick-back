@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-from .keys import TELEGRAM_TOKEN
+from .keys import TELEGRAM_TOKEN, psql_password, secret_key
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,7 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/3.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = '3c+8!=ssk@&zg(*vx5shb^sul7o%@e&z7nio9px7-or5ufy6(b'
+SECRET_KEY = secret_key
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -87,7 +87,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'postgres',
         'USER': 'aleksandrneumoin',
-        'PASSWORD': 'I_am_Skrip1',
+        'PASSWORD': psql_password,
         'HOST': 'localhost',
         'PORT': '',
     }

@@ -17,11 +17,14 @@ from django.urls import path
 
 from api.apiviews import ProjectView, UserView, LoginView, SignupView, DaysOffView, UsersView, \
     ConfirmView, CalendarView, ProjectsView, ClientsView, ClientView, UserProfileView, \
-    TagsView, ImgView
+    TagsView, ImgView, LoginFacebookView
 
 urlpatterns = [
+    path('login/facebook/', LoginFacebookView.as_view()),
     path('login/', LoginView.as_view()),
+
     path('signup/', SignupView.as_view()),
+
     path('confirm/', ConfirmView.as_view()),
 
     # path('vkauth/', VkAuth.as_view()),
