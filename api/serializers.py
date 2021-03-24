@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_recursive.fields import RecursiveField
 
-from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount
+from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, VkAccount
 
 
 def update_data(instance, validated_data, fields: list or str):
@@ -24,6 +24,23 @@ class FacebookAccountSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         if not self.instance and getattr(self, 'initial_data', None):
             self.instance = FacebookAccount.objects.filter(id=self.initial_data['id']).first()
+
+
+class VkAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VkAccount
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.get('data'):
+            kwargs['data'] = {
+                'id': kwargs['data']['id'],
+                'name': f"{kwargs['data']['first_name']} {kwargs['data']['last_name']}",
+                'picture': kwargs['data']['picture']
+            }
+        super().__init__(*args, **kwargs)
+        if not self.instance and getattr(self, 'initial_data', None):
+            self.instance = VkAccount.objects.filter(id=self.initial_data['id']).first()
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -57,6 +74,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
     facebook_account = FacebookAccountSerializer(allow_null=True)
+    vk_account = VkAccountSerializer(allow_null=True)
 
     def to_representation(self, obj):
         ret = super().to_representation(obj)

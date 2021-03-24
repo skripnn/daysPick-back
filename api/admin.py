@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.models import User
 from mptt.admin import DraggableMPTTAdmin
 
-from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount
+from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount, VkAccount
 
 
 class UserProfileInline(admin.StackedInline):
@@ -49,6 +49,7 @@ class UserAdmin(admin.ModelAdmin):
         from django.utils.html import format_html
         url = reverse('admin:api_userprofile_change', args=[obj.profile.id])
         return format_html("<a href='{}'>{}</a>", url, str(obj.profile))
+
     profile_link.admin_order_field = 'profile'
     profile_link.short_description = 'profile'
 
@@ -80,7 +81,7 @@ class ClientAdmin(admin.ModelAdmin):
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'first_name', 'last_name', 'is_confirmed')
-    inlines = (TagsInline, )
+    inlines = (TagsInline,)
 
 
 @admin.register(ProfileTag)
@@ -88,14 +89,10 @@ class ProfileTagAdmin(admin.ModelAdmin):
     list_display = ('tag', 'rank', 'user')
 
 
-@admin.register(FacebookAccount)
-class ProfileTagAdmin(admin.ModelAdmin):
-    pass
-
-
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
-
+admin.site.register(FacebookAccount)
+admin.site.register(VkAccount)
 
 admin.site.register(
     Tag,

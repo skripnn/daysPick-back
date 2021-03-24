@@ -63,6 +63,23 @@ class LoginFacebookView(APIView):
         return Response(ProfileSerializer(profile).page(asker=profile, token=True))
 
 
+class LoginVkView(APIView):
+    permission_classes = ()
+
+    def post(self, request):
+        profile = UserProfile.objects.filter(vk_account__id=request.data['id']).first()
+        if not profile:
+            data = {
+                'first_name': request.data.get('first_name'),
+                'last_name': request.data.get('last_name')
+            }
+            username = request.data.get('domain')
+            if not User.objects.filter(username__startswith=username).first():
+                data['username'] = username
+            profile = UserProfile.create(**data).update(vk_account=request.data)
+        return Response(ProfileSerializer(profile).page(asker=profile, token=True))
+
+
 class SignupView(APIView):
     permission_classes = ()
 
@@ -297,14 +314,3 @@ class TagsView(APIView):
             *[ProfileTag.objects.create(tag=i, rank=count + n) for n, i in enumerate(tags)]
         )
         return self.get(request)
-
-#
-# class VkAuth(APIView):
-#     permission_classes = ()
-#
-#     def get(self, request):
-#         import requests
-#         r = requests.get('https://api.vk.com/oauth/access_token', params=request.GET)
-#         import json
-#         r = json.loads(r.text)
-#         return Response(r)
