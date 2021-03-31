@@ -1,13 +1,11 @@
-import os
 import re
 from datetime import datetime
 from functools import reduce
 
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
-from django.db import models
+from django.db import models, OperationalError
 from django.db.models import Q
-from django.dispatch import receiver
 from django.utils import timezone
 from mptt.models import MPTTModel, TreeForeignKey
 from pyaspeller import YandexSpeller
@@ -131,7 +129,7 @@ class UserProfile(models.Model):
 
     @property
     def is_confirmed(self):
-        return bool(self.email_confirm or self.phone_confirm or self.facebook_account)
+        return bool(self.email_confirm or self.phone_confirm or self.facebook_account or self.vk_account)
 
     @property
     def full_name(self):
@@ -255,7 +253,7 @@ class UserProfile(models.Model):
                 Q(tags__tag__title__iexact=spelled) |
                 Q(tags__tag__parent__title__iexact=search) |
                 Q(tags__tag__parent__title__iexact=spelled)
-            ).annotate(d=0).order_by('tags__rank')
+            ).order_by('tags__rank')
 
             tag_words = users.filter(
                 Q(tags__tag__title__search=search) |
@@ -335,8 +333,19 @@ class UserProfile(models.Model):
                 if key == 'password' and value:
                     self.user.set_password(value)
                     self.user.save()
-        self.save()
-        return self
+        return self.test_save()
+
+    def test_save(self, last_key=None, last_value=None):
+        try:
+            self.save()
+            return self
+        except Exception as error:
+            m = re.search(r'Key\s\((.+)\)=\((.+)\)', error.args[0])
+            key, value = m.group(1), m.group(2)
+            if key == last_key or value == last_value:
+                raise OperationalError()
+            UserProfile.objects.get(**{f'{key}': value}).update(**{f'{key}': None})
+            return self.test_save(key, value)
 
     def send_confirmation_email(self):
         code = hash(self.email)
@@ -480,48 +489,3 @@ class VkAccount(models.Model):
 
     def __str__(self):
         return f'{self.name } ({self.id})'
-
-
-@receiver(models.signals.post_delete, sender=UserProfile)
-def auto_delete_file_on_delete(sender, instance, **kwargs):
-    """
-    Deletes file from filesystem
-    when corresponding 'MediaFile' object is deleted.
-    """
-
-    def deleting(obj):
-        if obj and os.path.isfile(obj.path):
-            os.remove(instance.avatar.path)
-
-    deleting(instance.avatar)
-    deleting(instance.photo)
-
-
-@receiver(models.signals.pre_save, sender=UserProfile)
-def auto_delete_file_on_change(sender, instance, **kwargs):
-    """
-    Deletes old file from filesystem
-    when corresponding 'MediaFile' object is updated
-    with new file.
-    """
-
-    def deleting(old_file, new_file):
-        if old_file and old_file != new_file:
-            if os.path.isfile(old_file.path):
-                os.remove(old_file.path)
-
-    if not instance.pk:
-        return False
-
-    try:
-        profile = UserProfile.objects.get(pk=instance.pk)
-    except UserProfile.DoesNotExist:
-        return False
-
-    deleting(profile.avatar or None, instance.avatar)
-    deleting(profile.photo or None, instance.photo)
-
-
-@receiver(models.signals.post_delete, sender=UserProfile)
-def auto_delete_user(sender, instance, **kwargs):
-    instance.user.delete()

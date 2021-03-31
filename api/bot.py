@@ -77,7 +77,9 @@ def answer(message, profile):
             if profile.phone != phone and profile.phone_confirm != phone:
                 return error(message)
             if profile.phone == phone:
-                profile.update(phone_confirm=phone, phone=None, telegram_chat_id=chat_id)
+                profile = profile.update(phone_confirm=phone, phone=None, telegram_chat_id=chat_id)
+                if not isinstance(profile, UserProfile):
+                    error(message)
                 bot.send_message(message.chat.id, f'Номер подтвержден для пользователя {profile}', reply_markup=keyboard)
             elif profile.phone_confirm == phone:
                 bot.send_message(message.chat.id, f'Номер уже подтвержден', reply_markup=keyboard)
@@ -110,5 +112,5 @@ def error(message):
     bot.register_next_step_handler(error_message, telephone)
 
 
-# bot.set_webhook(url="https://b749bec136a8.ngrok.io/bot/" + TELEGRAM_TOKEN)
+# bot.set_webhook(url="https://ede629051ed7.ngrok.io/bot/" + TELEGRAM_TOKEN)
 # bot.set_webhook(url="https://dayspick.ru/bot/" + TELEGRAM_TOKEN)

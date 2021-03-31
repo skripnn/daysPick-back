@@ -24,3 +24,11 @@ sqlparse==0.3.1
 tornado==6.1
 tzlocal==2.1
 urllib3==1.26.3
+Pillow==8.1.2
+
+redis~=3.5.3
+pip~=20.2.4
+Jinja2~=2.11.3
+setuptools~=50.3.2
+celery~=4.4.7
+flower~=0.9.7

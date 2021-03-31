@@ -36,7 +36,7 @@ class VkAccountSerializer(serializers.ModelSerializer):
             kwargs['data'] = {
                 'id': kwargs['data']['id'],
                 'name': f"{kwargs['data']['first_name']} {kwargs['data']['last_name']}",
-                'picture': kwargs['data']['picture']
+                'picture': kwargs['data']['photo_50']
             }
         super().__init__(*args, **kwargs)
         if not self.instance and getattr(self, 'initial_data', None):
