@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from rest_framework_recursive.fields import RecursiveField
 
 from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, VkAccount
 
@@ -46,24 +45,8 @@ class VkAccountSerializer(serializers.ModelSerializer):
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tag
-        read_only_fields = ['id', 'childs']
-        fields = ['id', 'title', 'info', 'custom', 'childs', 'category']
-
-    childs = serializers.ListField(read_only=True, source='children.all', child=RecursiveField())
-
-    def to_representation(self, obj):
-        ret = super().to_representation(obj)
-
-        if not ret.get('childs'):
-            ret.pop('childs')
-
-        return ret
-
-    def create(self, validated_data):
-        if self.initial_data.get('parent'):
-            validated_data['parent'] = Tag.objects.get(id=self.initial_data.get('parent')['id'])
-        tag, created = Tag.objects.get_or_create(**validated_data)
-        return tag
+        read_only_fields = ['id']
+        fields = ['id', 'title']
 
 
 class ProfileSerializer(serializers.ModelSerializer):

@@ -14,23 +14,36 @@ from django.utils.translation import gettext_lazy as _
 null = {'null': True, 'blank': True}
 
 
-class Tag(MPTTModel):
-    class Category(models.IntegerChoices):
-        NONE = 0, _('')
-        SOUND = 1, _('Звук')
-        LIGHT = 2, _('Свет')
-
-    category = models.IntegerField(choices=Category.choices, default=0)
+class Tag(models.Model):
     title = models.CharField(max_length=64)
-    parent = TreeForeignKey('self', on_delete=models.SET_NULL, related_name='children', **null)
-    info = models.TextField(**null)
-    custom = models.BooleanField(default=True)
-
-    class MPTTMeta:
-        order_insertion_by = ['title']
 
     def __str__(self):
         return self.title
+
+    @classmethod
+    def search(cls, **kwargs):
+        search = kwargs.get('filter')
+        profile = kwargs.get('profile')
+        tags = cls.objects.all()
+
+        if profile:
+            tags = cls.objects.exclude(profile_tags__user=profile)
+
+        if search:
+            if isinstance(search, list):
+                search = search[0]
+            spelled = YandexSpeller().spelled(search)
+
+            exact = tags.filter(title__iexact=search)
+            exact_spelled = tags.filter(title__iexact=spelled)
+            starts = tags.filter(title__istartswith=search)
+            starts_spelled = tags.filter(title__istartswith=spelled)
+            contain = tags.filter(title__icontains=search)
+            contain_spelled = tags.filter(title__icontains=spelled)
+
+            tags = exact | exact_spelled | starts | starts_spelled | contain | contain_spelled
+
+        return tags
 
 
 class ProfileTagManager(models.Manager):
@@ -50,7 +63,7 @@ class ProfileTagManager(models.Manager):
             tags.append(profile_tag)
         self.set(tags)
         ProfileTag.objects.filter(user__isnull=True).delete()
-        Tag.objects.filter(profile_tags__user__isnull=True, custom=True).delete()
+        Tag.objects.filter(profile_tags__user__isnull=True).delete()
         return self.list()
 
 
@@ -190,11 +203,6 @@ class UserProfile(models.Model):
     @classmethod
     def search(cls, **kwargs):
         users = cls.objects.exclude(is_public=False)
-        if kwargs.get('category'):
-            category = kwargs['category']
-            if isinstance(category, list):
-                category = category[0]
-            users = users.filter(tags__tag__category=category).distinct()
         if kwargs.get('filter'):
             search = kwargs['filter']
             if isinstance(search, list):
@@ -250,23 +258,17 @@ class UserProfile(models.Model):
 
             tag_exact = users.filter(
                 Q(tags__tag__title__iexact=search) |
-                Q(tags__tag__title__iexact=spelled) |
-                Q(tags__tag__parent__title__iexact=search) |
-                Q(tags__tag__parent__title__iexact=spelled)
+                Q(tags__tag__title__iexact=spelled)
             ).order_by('tags__rank')
 
             tag_words = users.filter(
                 Q(tags__tag__title__search=search) |
-                Q(tags__tag__title__search=spelled) |
-                Q(tags__tag__parent__title__search=search) |
-                Q(tags__tag__parent__title__search=spelled)
+                Q(tags__tag__title__search=spelled)
             ).order_by('tags__rank')
 
             tag_contains = users.filter(
                 Q(tags__tag__title__icontains=search) |
-                Q(tags__tag__parent__title__icontains=search) |
-                Q(tags__tag__title__icontains=spelled) |
-                Q(tags__tag__parent__title__icontains=spelled)
+                Q(tags__tag__title__icontains=spelled)
             ).order_by('tags__rank')
 
             users = name_exact | phone_endswith | tag_exact | name_words | tag_words | name_contains | tag_contains | phone_contains

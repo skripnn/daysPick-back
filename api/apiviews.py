@@ -286,10 +286,7 @@ class ImgView(APIView):
 
 class TagsView(APIView):
     def get(self, request):
-        if request.GET.get('filter') == 'options':
-            tags = Tag.objects.filter(custom=False, parent=None)
-        else:
-            tags = request.user.profile.tags.list()
+        tags = Tag.search(profile=request.user.profile, **request.GET)
         serializer = TagSerializer(tags, many=True)
         return Response(serializer.data)
 
@@ -300,17 +297,9 @@ class TagsView(APIView):
 
     def put(self, request):
         tag, created = Tag.objects.get_or_create(**request.data)
-        tags = []
         count = request.user.profile.tags.count()
-        if created:
-            tag.custom = True
-            tag.save()
-        for i in tag.children.all():
-            tags.append(i)
-        if not tags:
-            tags.append(tag)
-
         request.user.profile.tags.add(
-            *[ProfileTag.objects.create(tag=i, rank=count + n) for n, i in enumerate(tags)]
+            ProfileTag.objects.create(tag=tag, rank=count)
         )
-        return self.get(request)
+        serializer = TagSerializer(request.user.profile.tags.list(), many=True)
+        return Response(serializer.data)

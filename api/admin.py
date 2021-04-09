@@ -1,6 +1,5 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from mptt.admin import DraggableMPTTAdmin
 
 from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount, VkAccount
 
@@ -21,26 +20,6 @@ class TagInline(admin.TabularInline):
 
 class TagsInline(admin.TabularInline):
     model = ProfileTag
-    extra = 0
-    can_delete = False
-    fieldsets = [
-        ('None', {'fields': ('title', 'custom', 'parent')})
-    ]
-    readonly_fields = ('title', 'custom', 'parent')
-
-    def title(self, obj):
-        return obj.tag.title
-
-    def custom(self, obj):
-        return obj.tag.custom
-
-    def parent(self, obj):
-        return obj.tag.parent
-
-    def has_add_permission(self, request, obj):
-        return False
-
-    custom.boolean = True
 
 
 class UserAdmin(admin.ModelAdmin):
@@ -84,26 +63,8 @@ class UserProfileAdmin(admin.ModelAdmin):
     inlines = (TagsInline,)
 
 
-@admin.register(ProfileTag)
-class ProfileTagAdmin(admin.ModelAdmin):
-    list_display = ('tag', 'rank', 'user')
-
-
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(FacebookAccount)
 admin.site.register(VkAccount)
-
-admin.site.register(
-    Tag,
-    DraggableMPTTAdmin,
-    list_display=(
-        'tree_actions',
-        'indented_title',
-        'custom',
-        'category'
-    ),
-    list_display_links=(
-        'indented_title',
-    ),
-)
+admin.site.register(Tag)
