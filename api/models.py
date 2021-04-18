@@ -7,9 +7,7 @@ from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models, OperationalError
 from django.db.models import Q
 from django.utils import timezone
-from mptt.models import MPTTModel, TreeForeignKey
 from pyaspeller import YandexSpeller
-from django.utils.translation import gettext_lazy as _
 
 null = {'null': True, 'blank': True}
 
@@ -139,6 +137,7 @@ class UserProfile(models.Model):
     show_phone = models.BooleanField(default=True)
     avatar = models.ImageField(upload_to='avatars', **null)
     photo = models.ImageField(upload_to='photos', **null)
+    last_activity = models.DateTimeField(default=timezone.now)
 
     @property
     def is_confirmed(self):
@@ -202,7 +201,7 @@ class UserProfile(models.Model):
 
     @classmethod
     def search(cls, **kwargs):
-        users = cls.objects.exclude(is_public=False)
+        users = cls.objects.exclude(is_public=False).order_by('-last_activity')
         if kwargs.get('filter'):
             search = kwargs['filter']
             if isinstance(search, list):

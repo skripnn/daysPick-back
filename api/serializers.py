@@ -52,7 +52,7 @@ class TagSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        exclude = ['id', 'user']
+        exclude = ['id', 'user', 'last_activity']
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
