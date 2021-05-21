@@ -54,8 +54,8 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'api.middlewares.UpdateLastActivityMiddleware'
+    'django.middleware.clickjacking.XFrameOptionsMiddleware'
+    # 'api.middlewares.UpdateLastActivityMiddleware'
 ]
 
 ROOT_URLCONF = 'timespick.urls'
@@ -83,19 +83,12 @@ WSGI_APPLICATION = 'timespick.wsgi.application'
 # https://docs.djangoproject.com/en/3.1/ref/settings/#databases
 
 DATABASES = {
-    # 'default': {
-    #     'ENGINE': 'django.db.backends.postgresql_psycopg2',
-    #     'NAME': 'postgres',
-    #     'USER': 'aleksandrneumoin',
-    #     'PASSWORD': psql_password,
-    #     'HOST': 'localhost',
-    #     'PORT': '',
-    # }
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'postgres',
         'USER': 'postgres',
-        'PASSWORD': 'postgres',
+        'PASSWORD': psql_password,
+        # 'HOST': 'localhost',
         'HOST': 'db',
         'PORT': 5432,
     }

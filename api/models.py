@@ -131,17 +131,16 @@ class UserProfile(models.Model):
     phone_confirm = models.CharField(max_length=32, **null, unique=True)
     telegram_chat_id = models.IntegerField(**null, unique=True)
     facebook_account = models.OneToOneField('FacebookAccount', on_delete=models.SET_NULL, **null, related_name='profile')
-    vk_account = models.OneToOneField('VkAccount', on_delete=models.SET_NULL, **null, related_name='profile')
     is_public = models.BooleanField(default=False)
     show_email = models.BooleanField(default=True)
     show_phone = models.BooleanField(default=True)
     avatar = models.ImageField(upload_to='avatars', **null)
     photo = models.ImageField(upload_to='photos', **null)
-    last_activity = models.DateTimeField(default=timezone.now)
+    raised = models.DateTimeField(default=timezone.now)
 
     @property
     def is_confirmed(self):
-        return bool(self.email_confirm or self.phone_confirm or self.facebook_account or self.vk_account)
+        return bool(self.email_confirm or self.phone_confirm or self.facebook_account)
 
     @property
     def full_name(self):
@@ -156,9 +155,10 @@ class UserProfile(models.Model):
     def username(self):
         return self.user.username
 
-    @property
-    def projects(self):
-        return self.all_projects.exclude(creator__isnull=True)
+    def projects(self, asker=None):
+        if asker is None:
+            asker = self
+        return self.all_projects.exclude(creator__isnull=True).exclude(canceled=asker)
 
     @property
     def days_off_project(self):
@@ -201,7 +201,7 @@ class UserProfile(models.Model):
 
     @classmethod
     def search(cls, **kwargs):
-        users = cls.objects.exclude(is_public=False).order_by('-last_activity')
+        users = cls.objects.exclude(is_public=False).order_by('-raised')
         if kwargs.get('filter'):
             search = kwargs['filter']
             if isinstance(search, list):
@@ -284,12 +284,25 @@ class UserProfile(models.Model):
         return token.key
 
     def get_actual_projects(self, asker):
-        today = timezone.now().date()
         if asker == self:
-            return self.projects.filter(Q(date_end__gte=today) | Q(is_paid=False)).reverse()
+            return self.projects(asker).actual().reverse()
         if not asker:
             return []
-        return self.projects.filter(creator=asker).reverse()
+        return self.projects(asker).filter(creator=asker).actual().reverse()
+
+    def page(self, asker, token=False):
+        from api.serializers import ProjectSerializer, ProfileSerializer, ProfileSelfSerializer
+        if asker == self:
+            profile_serializer = ProfileSelfSerializer
+        else:
+            profile_serializer = ProfileSerializer
+        result = {
+            'user': profile_serializer(self).data,
+            'projects': ProjectSerializer(self.get_actual_projects(asker), many=True).data
+        }
+        if token:
+            result['token'] = self.token()
+        return result
 
     def update(self, **kwargs):
         for key, value in kwargs.items():
@@ -305,15 +318,6 @@ class UserProfile(models.Model):
                             fb.instance.profile.update(facebook_account=None)
                     else:
                         continue
-                if key == 'vk_account' and value:
-                    from api.serializers import VkAccountSerializer
-                    fb = VkAccountSerializer(data=value)
-                    if fb.is_valid():
-                        fb.save()
-                        value = fb.instance
-                        fb_profile = getattr(fb.instance, 'profile', None)
-                        if fb_profile and fb_profile != self:
-                            fb.instance.profile.update(vk_account=None)
                 if key in ['avatar', 'photo'] and value:
                     if isinstance(value, list):
                         value = value[0]
@@ -397,11 +401,25 @@ class Client(models.Model):
 
 
 class ProjectsQuerySet(models.QuerySet):
+    def without_children(self):
+        return self.filter(parent__isnull=True)
+
+    def folders(self):
+        return self.filter(children__isnull=False).distinct()
+
+    def actual(self):
+        today = timezone.now().date()
+        return self.without_children().filter(Q(date_end__gte=today) | Q(is_paid=False)).filter(Q(children__isnull=True) | Q(children__is_paid=False)).distinct()
+
     def search(self, **kwargs):
         search = kwargs.get('filter')
         days = kwargs.get('days')
+        folders = kwargs.get('folders')
 
-        projects = self
+        if folders:
+            projects = self.folders()
+        else:
+            projects = self.without_children()
 
         if search:
             if isinstance(search, list):
@@ -413,12 +431,15 @@ class ProjectsQuerySet(models.QuerySet):
                 Q(title__icontains=search) |
                 Q(client__name__icontains=search) |
                 Q(client__company__icontains=search) |
+                Q(parent__title__icontains=search) |
                 Q(title__icontains=spelled) |
                 Q(client__name__icontains=spelled) |
                 Q(client__company__icontains=spelled) |
+                Q(parent__title__icontains=spelled) |
                 Q(title__in=options) |
                 Q(client__name__in=options) |
-                Q(client__company__in=options)
+                Q(client__company__in=options) |
+                Q(parent__title__in=options)
             ).annotate(rank=SearchRank(vector, search)).order_by('-rank')
 
         if days:
@@ -451,12 +472,30 @@ class Project(models.Model):
     info = models.TextField(**null)
     is_paid = models.BooleanField(default=False)
     is_wait = models.BooleanField(default=False)
+    canceled = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, related_name='canceled_projects', **null)
+    confirmed = models.BooleanField(default=True)
+    parent = models.ForeignKey('self', **null, on_delete=models.CASCADE, related_name='children')
 
     objects = ProjectsManager()
 
     @property
     def dates(self):
         return [i.date for i in self.days.all()]
+
+    @property
+    def is_folder(self):
+        return bool(self.children.count())
+
+    def child_delete(self, child):
+        self.children.remove(child)
+        if self.children.count() == 0:
+            self.delete()
+
+    def parent_days_set(self):
+        days = [day.date for day in Day.objects.filter(project__parent=self)]
+        self.date_start = days[0]
+        self.date_end = days[-1]
+        self.save()
 
     def __str__(self):
         return ' - '.join([str(self.user), str(self.id), str(self.title or '*days_off*')])
@@ -475,15 +514,6 @@ class Day(models.Model):
 
 
 class FacebookAccount(models.Model):
-    id = models.CharField(max_length=64, unique=True, primary_key=True)
-    name = models.CharField(max_length=64, **null)
-    picture = models.URLField(**null)
-
-    def __str__(self):
-        return f'{self.name } ({self.id})'
-
-
-class VkAccount(models.Model):
     id = models.CharField(max_length=64, unique=True, primary_key=True)
     name = models.CharField(max_length=64, **null)
     picture = models.URLField(**null)

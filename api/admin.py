@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
 
-from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount, VkAccount
+from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount
 
 
 class UserProfileInline(admin.StackedInline):
@@ -66,5 +66,4 @@ class UserProfileAdmin(admin.ModelAdmin):
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(FacebookAccount)
-admin.site.register(VkAccount)
 admin.site.register(Tag)

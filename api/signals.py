@@ -3,7 +3,7 @@ import os
 from django.db import models
 from django.dispatch import receiver
 
-from .models import UserProfile
+from .models import UserProfile, Project
 
 
 @receiver(models.signals.post_save, sender=UserProfile)

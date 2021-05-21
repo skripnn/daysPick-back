@@ -4,12 +4,14 @@ from datetime import datetime
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag
 from api.serializers import ProjectSerializer, ProfileSerializer, \
-    ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer
+    ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer, \
+    ProjectShortSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -60,23 +62,6 @@ class LoginFacebookView(APIView):
             if not User.objects.filter(username__startswith=username).first():
                 data['username'] = username
             profile = UserProfile.create(**data).update(facebook_account=request.data)
-        return Response(ProfileSerializer(profile).page(asker=profile, token=True))
-
-
-class LoginVkView(APIView):
-    permission_classes = ()
-
-    def post(self, request):
-        profile = UserProfile.objects.filter(vk_account__id=request.data['id']).first()
-        if not profile:
-            data = {
-                'first_name': request.data.get('first_name'),
-                'last_name': request.data.get('last_name')
-            }
-            username = request.data.get('domain')
-            if not User.objects.filter(username__startswith=username).first():
-                data['username'] = username
-            profile = UserProfile.create(**data).update(vk_account=request.data)
         return Response(ProfileSerializer(profile).page(asker=profile, token=True))
 
 
@@ -140,25 +125,42 @@ class UserView(APIView):
         asker = UserProfile.get(request.user)
         if not profile:
             return Response(status=404)
-        return Response(ProfileSerializer(profile).page(asker))
+        return Response(profile.page(asker))
+
+
+class RaiseProfileView(APIView):
+    def get(self, request):
+        profile = request.user.profile
+        profile.update(raised=timezone.now())
+        return Response(profile.page(profile))
 
 
 class ProjectView(APIView):
     def get(self, request, pk):
-        if pk is None:
-            return Response({})
-        project = Project.objects.get(pk=pk)
-        return Response(ProjectSerializer(project).data)
+        if pk is not None:
+            project = Project.objects.filter(pk=pk).first()
+            if project:
+                if any((request.user.profile == project.creator,
+                        request.user.profile == project.user)) and request.user.profile != project.canceled:
+                    return Response(ProjectSerializer(project).data)
+        return Response(status=404)
 
     def post(self, request, pk=None):
         data = request.data
-        data['user'] = request.GET.get('user', request.user.username)
+        if not data.get('user'):
+            data['user'] = request.user.username
         project = None
         if pk is not None:
             project = Project.objects.get(pk=pk)
-            data['creator'] = project.creator.username
-        else:
-            data['creator'] = request.user.username
+            if project.creator != project.user:
+                if request.user.profile == project.creator:
+                    data.pop('is_paid')
+                    data['confirmed'] = False
+                else:
+                    is_paid = data.get('is_paid')
+                    data = {'confirmed': True}
+                    if is_paid:
+                        data['is_paid'] = is_paid
         serializer = ProjectSerializer(instance=project, data=data)
         if serializer.is_valid(raise_exception=True):
             serializer.save()
@@ -166,7 +168,15 @@ class ProjectView(APIView):
         return Response(status=500)
 
     def delete(self, request, pk):
-        Project.objects.get(pk=pk).delete()
+        project = Project.objects.get(pk=pk)
+        if project.parent:
+            project.parent.child_delete(project)
+        if project.creator != project.user and not project.canceled:
+            project.canceled = request.user.profile
+            project.save()
+        else:
+            project.delete()
+
         return Response({})
 
 
@@ -232,24 +242,34 @@ class CalendarView(APIView):
         start = datetime.strptime(request.GET.get('start'), date_format).date()
         end = datetime.strptime(request.GET.get('end'), date_format).date()
         project_id = int(request.GET.get('project_id', 0))
-        user = request.GET.get('user')
+        users = request.GET.getlist('users')
+        if not users:
+            users = request.GET.getlist('user')
 
-        all_days = Day.objects.filter(date__range=[start, end], project__user__user__username=user).exclude(project_id=project_id)
-        if request.user.is_anonymous:
-            days_off = all_days.exclude(project__is_wait=True).dates('date', 'day')
-            days = {}
-        else:
-            days_off = all_days.exclude(project__creator=request.user.profile)
-            if request.user.username != user:
-                days_off = days_off.exclude(project__is_wait=True)
-            days_off = days_off.dates('date', 'day')
-            days = all_days.filter(project__creator=request.user.profile)
-            days = CalendarDaySerializer(days, many=True).dict()
+        all_days = Day.objects.filter(date__range=[start, end], project__user__user__username__in=users)\
+            .exclude(project_id=project_id)
 
-        return Response({
-            'days': days,
-            'daysOff': days_off
-        })
+        result = {}
+
+        for user in users:
+            user_days = all_days.filter(project__user__user__username=user)
+            if request.user.is_anonymous:
+                days_off = user_days.exclude(project__is_wait=True)
+                days = {}
+            else:
+                if request.user.username == user:
+                    days_off = user_days.exclude(project__creator__isnull=False)
+                    days = user_days.filter(project__creator__isnull=False)
+                else:
+                    days_off = user_days.exclude(project__creator=request.user.profile).exclude(project__is_wait=True)
+                    days = user_days.filter(project__creator=request.user.profile).exclude(project__canceled=request.user.profile)
+                days = CalendarDaySerializer(days, many=True).dict()
+
+            result[user] = {
+                'days': days,
+                'daysOff': days_off.dates('date', 'day')
+            }
+        return Response(result)
 
 
 class ProjectsView(APIView):
@@ -265,9 +285,9 @@ class ProjectsView(APIView):
         if not user:
             user = asker
         if user == asker:
-            projects = user.projects
+            projects = user.projects()
         else:
-            projects = user.projects.filter(creator=asker)
+            projects = user.projects(asker).filter(creator=asker)
 
         return list_paginator(projects, data, ProjectSerializer)
 
