@@ -35,6 +35,13 @@ class TagSerializer(serializers.ModelSerializer):
         fields = ['id', 'title']
 
 
+class ProfileShortSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['id', 'username', 'full_name']
+        read_only_fields = ['id', 'username', 'full_name']
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
@@ -182,17 +189,23 @@ class RecursiveField(serializers.Serializer):
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        read_only_fields = ['id', 'date_start', 'date_end', 'parent_name', 'is_folder', 'children']
+        read_only_fields = ['id', 'date_start', 'date_end', 'parent_name', 'is_folder', 'children', 'creator_info']
         fields = '__all__'
 
     days = ProjectDaySerializer(many=True, allow_null=True, default=None)
     client = ClientShortSerializer(allow_null=True, default=None)
-    user = serializers.CharField()
+    creator_info = serializers.SerializerMethodField('get_creator_info', allow_null=True)
+    user = serializers.CharField(allow_null=True)
     creator = serializers.CharField(allow_null=True)
     children = RecursiveField(many=True, allow_null=True, read_only=True)
     parent_name = serializers.SerializerMethodField('get_parent_name', allow_null=True)
     is_folder = serializers.BooleanField(read_only=True)
     parent = serializers.SerializerMethodField('get_parent', allow_null=True)
+
+    def get_creator_info(self, obj):
+        if not obj.creator:
+            return None
+        return ProfileShortSerializer(obj.creator).data
 
     def get_parent_name(self, obj):
         if not obj.parent:
@@ -290,3 +303,40 @@ class UserPageSerializer(serializers.Serializer):
             'projects': ProjectSerializer(obj.get_actual_projects(obj), many=True).data
         }
         return ret
+
+
+class ProjectsListItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = ['id', 'title', 'client', 'creator', 'money', 'info', 'dates', 'children']
+
+    client = ClientShortSerializer()
+    creator = ProfileShortSerializer()
+    dates = serializers.SerializerMethodField('get_dates')
+    title = serializers.SerializerMethodField('get_title')
+    children = RecursiveField(many=True, allow_null=True, read_only=True)
+
+    def get_dates(self, obj):
+        return [i.date for i in obj.days.all()]
+
+    def get_title(self, obj):
+        def title_from_date():
+            date_title = datetime.datetime.strftime(obj.date_start, '%d-%m-%Y')
+            if obj.date_end != obj.date_start:
+                date_title += ' - ' + datetime.datetime.strftime(obj.date_end, '%d-%m-%Y')
+            return date_title
+        title = obj.title
+        if not title:
+            title = title_from_date()
+        if obj.parent and obj.parent.title:
+            title = obj.parent.title + ' / ' + title
+        return title
+
+    def to_representation(self, instance):
+        result = super().to_representation(instance)
+        if instance.is_folder:
+            result.pop('client')
+            result.pop('money')
+        else:
+            result.pop('children')
+        return result

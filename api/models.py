@@ -407,6 +407,9 @@ class ProjectsQuerySet(models.QuerySet):
     def folders(self):
         return self.filter(children__isnull=False).distinct()
 
+    def without_folders(self):
+        return self.filter(children__isnull=True).distinct()
+
     def actual(self):
         today = timezone.now().date()
         return self.without_children().filter(Q(date_end__gte=today) | Q(is_paid=False)).filter(Q(children__isnull=True) | Q(children__is_paid=False)).distinct()
@@ -418,6 +421,8 @@ class ProjectsQuerySet(models.QuerySet):
 
         if folders:
             projects = self.folders()
+        elif search or days:
+            projects = self.without_folders()
         else:
             projects = self.without_children()
 
@@ -460,7 +465,7 @@ class Project(models.Model):
     class Meta:
         ordering = ['-date_end', '-date_start']
 
-    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='all_projects')
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='all_projects', **null)
     creator = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, related_name='created_projects', **null)
     date_start = models.DateField(**null)
     date_end = models.DateField(**null)

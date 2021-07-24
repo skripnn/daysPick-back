@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer, \
-    ProjectShortSerializer
+    ProjectsListItemSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -272,6 +272,15 @@ class CalendarView(APIView):
         return Response(result)
 
 
+class TestView(APIView):
+    def get(self, request):
+        projects = request.user.profile.projects().without_children()
+        return list_paginator(projects, {}, ProjectsListItemSerializer)
+
+    def post(self, request):
+        return self.get(request)
+
+
 class ProjectsView(APIView):
     def get(self, request):
         return self.search(request, request.GET)
@@ -283,8 +292,11 @@ class ProjectsView(APIView):
         user = UserProfile.get(data.get('user'))
         asker = UserProfile.get(request.user)
         if not user:
-            user = asker
-        if user == asker:
+            if data.get('open'):
+                projects = Project.objects.filter(user__isnull=True)
+            else:
+                projects = asker.projects()
+        elif user == asker:
             projects = user.projects()
         else:
             projects = user.projects(asker).filter(creator=asker)
