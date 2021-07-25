@@ -49,5 +49,6 @@ urlpatterns = [
     path('client/<int:pk>/', ClientView.as_view()),
     path('client/', ClientView.as_view()),
 
+    path('@<str:username>/', UserView.as_view()),
     path('', UsersView.as_view())
 ]
