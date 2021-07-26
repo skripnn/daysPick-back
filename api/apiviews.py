@@ -157,14 +157,17 @@ class ProjectView(APIView):
                     data.pop('is_paid')
                     data['confirmed'] = False
                 else:
-                    is_paid = data.get('is_paid')
-                    data = {'confirmed': True}
-                    if is_paid:
-                        data['is_paid'] = is_paid
+                    data['confirmed'] = True
+                    data['is_wait'] = False
+        else:
+            if data.get('creator') != data.get('user'):
+                data['is_wait'] = True
+                data['confirmed'] = False
         serializer = ProjectSerializer(instance=project, data=data)
-        if serializer.is_valid(raise_exception=True):
+        if serializer.is_valid(raise_exception=False):
             serializer.save()
             return Response(serializer.data)
+        print(serializer.errors)
         return Response(status=500)
 
     def delete(self, request, pk):
@@ -173,6 +176,8 @@ class ProjectView(APIView):
             project.parent.child_delete(project)
         if project.creator != project.user and not project.canceled:
             project.canceled = request.user.profile
+            project.confirmed = True
+            project.is_wait = True
             project.save()
         else:
             project.delete()
@@ -259,7 +264,7 @@ class CalendarView(APIView):
             else:
                 if request.user.username == user:
                     days_off = user_days.exclude(project__creator__isnull=False)
-                    days = user_days.filter(project__creator__isnull=False)
+                    days = user_days.filter(project__creator__isnull=False).exclude(project__canceled=request.user.profile)
                 else:
                     days_off = user_days.exclude(project__creator=request.user.profile).exclude(project__is_wait=True)
                     days = user_days.filter(project__creator=request.user.profile).exclude(project__canceled=request.user.profile)

@@ -197,6 +197,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     creator_info = serializers.SerializerMethodField('get_creator_info', allow_null=True)
     user = serializers.CharField(allow_null=True)
     creator = serializers.CharField(allow_null=True)
+    canceled = serializers.CharField(allow_null=True,  default=None)
     children = RecursiveField(many=True, allow_null=True, read_only=True)
     parent_name = serializers.SerializerMethodField('get_parent_name', allow_null=True)
     is_folder = serializers.BooleanField(read_only=True)
