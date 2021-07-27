@@ -319,20 +319,19 @@ class UserProfile(models.Model):
             'daysOff': days_off.dates('date', 'day')
         }
 
-    def page(self, asker, token=False, calendar=False):
+    def page(self, asker, token=False):
         from api.serializers import ProjectSerializer, ProfileSerializer, ProfileSelfSerializer
         if asker == self:
             profile_serializer = ProfileSelfSerializer
         else:
             profile_serializer = ProfileSerializer
+        start_date = datetime.now().date()
+        start_date = start_date - timedelta(start_date.weekday() + 15 * 7)
         result = {
             'user': profile_serializer(self).data,
-            'projects': ProjectSerializer(self.get_actual_projects(asker), many=True).data
+            'projects': ProjectSerializer(self.get_actual_projects(asker), many=True).data,
+            'calendar': self.get_calendar(asker, start_date)
         }
-        if calendar:
-            start_date = datetime.now().date()
-            start_date = start_date - timedelta(start_date.weekday() + 15 * 7)
-            result['calendar'] = self.get_calendar(asker, start_date)
         if token:
             result['token'] = self.token()
         return result

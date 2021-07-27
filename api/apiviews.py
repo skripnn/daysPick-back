@@ -125,7 +125,9 @@ class UserView(APIView):
         asker = UserProfile.get(request.user)
         if not profile:
             return Response(status=404)
-        return Response(profile.page(asker, calendar=request.GET.get('calendar')))
+        if request.GET.get('projects'):
+            return Response(ProjectSerializer(profile.get_actual_projects(asker), many=True).data)
+        return Response(profile.page(asker))
 
 
 class RaiseProfileView(APIView):

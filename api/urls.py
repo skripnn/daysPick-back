@@ -27,7 +27,6 @@ urlpatterns = [
 
     path('confirm/', ConfirmView.as_view()),
 
-    path('user/<str:username>/', UserView.as_view()),
     path('users/', UsersView.as_view()),
 
     path('profile/tags/', TagsView.as_view()),
