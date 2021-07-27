@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import reduce
 
 from django.contrib.auth.models import User, AbstractUser
@@ -290,7 +290,36 @@ class UserProfile(models.Model):
             return []
         return self.projects(asker).filter(creator=asker).actual().reverse()
 
-    def page(self, asker, token=False):
+    def get_calendar(self, asker=None, start=None, end=None, project_id=0):
+        user_days = Day.objects.filter(project__user=self).exclude(project_id=project_id)
+        if start and end:
+            user_days = user_days.filter(date__range=[start, end])
+        elif start:
+            user_days = user_days.filter(date__gte=start)
+        elif end:
+            user_days = user_days.filter(date__lte=end)
+
+        if not asker:
+            days_off = user_days.exclude(project__is_wait=True)
+            days = {}
+        else:
+            if asker == self:
+                days_off = user_days.exclude(project__creator__isnull=False)
+                days = user_days.filter(project__creator__isnull=False).exclude(
+                    project__canceled=self)
+            else:
+                days_off = user_days.exclude(project__creator=asker).exclude(project__is_wait=True)
+                days = user_days.filter(project__creator=asker).exclude(
+                    project__canceled=asker)
+            from api.serializers import CalendarDaySerializer
+            days = CalendarDaySerializer(days, many=True).dict()
+
+        return {
+            'days': days,
+            'daysOff': days_off.dates('date', 'day')
+        }
+
+    def page(self, asker, token=False, calendar=False):
         from api.serializers import ProjectSerializer, ProfileSerializer, ProfileSelfSerializer
         if asker == self:
             profile_serializer = ProfileSelfSerializer
@@ -300,6 +329,10 @@ class UserProfile(models.Model):
             'user': profile_serializer(self).data,
             'projects': ProjectSerializer(self.get_actual_projects(asker), many=True).data
         }
+        if calendar:
+            start_date = datetime.now().date()
+            start_date = start_date - timedelta(start_date.weekday() + 15 * 7)
+            result['calendar'] = self.get_calendar(asker, start_date)
         if token:
             result['token'] = self.token()
         return result

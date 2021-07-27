@@ -125,7 +125,7 @@ class UserView(APIView):
         asker = UserProfile.get(request.user)
         if not profile:
             return Response(status=404)
-        return Response(profile.page(asker))
+        return Response(profile.page(asker, calendar=request.GET.get('calendar')))
 
 
 class RaiseProfileView(APIView):
@@ -244,36 +244,22 @@ class CalendarView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        start = datetime.strptime(request.GET.get('start'), date_format).date()
-        end = datetime.strptime(request.GET.get('end'), date_format).date()
+        start, end = request.GET.get('start'), request.GET.get('end')
+        if start:
+            start = datetime.strptime(start, date_format).date()
+        if end:
+            end = datetime.strptime(end, date_format).date()
         project_id = int(request.GET.get('project_id', 0))
         users = request.GET.getlist('users')
         if not users:
             users = request.GET.getlist('user')
 
-        all_days = Day.objects.filter(date__range=[start, end], project__user__user__username__in=users)\
-            .exclude(project_id=project_id)
-
         result = {}
 
         for user in users:
-            user_days = all_days.filter(project__user__user__username=user)
-            if request.user.is_anonymous:
-                days_off = user_days.exclude(project__is_wait=True)
-                days = {}
-            else:
-                if request.user.username == user:
-                    days_off = user_days.exclude(project__creator__isnull=False)
-                    days = user_days.filter(project__creator__isnull=False).exclude(project__canceled=request.user.profile)
-                else:
-                    days_off = user_days.exclude(project__creator=request.user.profile).exclude(project__is_wait=True)
-                    days = user_days.filter(project__creator=request.user.profile).exclude(project__canceled=request.user.profile)
-                days = CalendarDaySerializer(days, many=True).dict()
+            user_profile = UserProfile.get(user)
+            result[user] = user_profile.get_calendar(request.user.profile, start, end, project_id)
 
-            result[user] = {
-                'days': days,
-                'daysOff': days_off.dates('date', 'day')
-            }
         return Response(result)
 
 
