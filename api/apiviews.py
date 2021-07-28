@@ -1,4 +1,5 @@
 import re
+import uuid
 from datetime import datetime
 
 from django.contrib.auth import authenticate
@@ -12,7 +13,7 @@ from api.bot import BotNotification
 from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer, \
-    ProjectsListItemSerializer
+    ProjectsListItemSerializer, ProfileShortSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -76,10 +77,32 @@ class LoginFacebookView(APIView):
                 'email_confirm': request.data.get('email')
             }
             username = re.sub(r'\s', '', request.data.get('name'))
-            if not User.objects.filter(username__startswith=username).first():
+            if User.objects.filter(username=username).count() != 0:
+                data['username'] = f'u{uuid.uuid4().hex[:16]}'
+            else:
                 data['username'] = username
             profile = UserProfile.create(**data).update(facebook_account=request.data)
-        return Response(ProfileSerializer(profile).page(asker=profile, token=True))
+        return Response(profile.page(asker=profile, token=True))
+
+
+class LoginTelegramView(APIView):
+    permission_classes = ()
+
+    def post(self, request):
+        profile = UserProfile.objects.filter(telegram_chat_id=request.data['id']).first()
+        if not profile:
+            data = {
+                'first_name': request.data.get('first_name'),
+                'last_name': request.data.get('last_name'),
+                'telegram_chat_id': int(request.data.get('id'))
+            }
+            username = request.data.get('username')
+            if User.objects.filter(username=username).count() != 0:
+                data['username'] = f'u{uuid.uuid4().hex[:16]}'
+            else:
+                data['username'] = username
+            profile = UserProfile.create(**data).update(telegram_chat_id=data['telegram_chat_id'])
+        return Response(profile.page(asker=profile, token=True))
 
 
 class SignupView(APIView):
@@ -144,6 +167,12 @@ class UserView(APIView):
             return Response(status=404)
         if request.GET.get('projects'):
             return Response(ProjectSerializer(profile.get_actual_projects(asker), many=True).data)
+        if request.GET.get('profile'):
+            if request.GET['profile'] == 'short':
+                return Response(ProfileShortSerializer(profile).data)
+            elif asker == profile:
+                return Response(ProfileSelfSerializer(profile).data)
+            return Response(ProfileSerializer(profile).data)
         return Response(profile.page(asker))
 
 

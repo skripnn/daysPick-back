@@ -83,7 +83,7 @@ def answer(message, profile):
                 bot.send_message(message.chat.id, f'Номер подтвержден для пользователя {profile}', reply_markup=keyboard)
             elif profile.phone_confirm == phone:
                 bot.send_message(message.chat.id, f'Номер уже подтвержден', reply_markup=keyboard)
-            button = types.InlineKeyboardButton('Профиль', f'https://dayspick.ru/profile/')
+            button = types.InlineKeyboardButton('Профиль', get_link('profile', profile))
             keyboard = types.InlineKeyboardMarkup().add(button)
             bot.send_message(message.chat.id, f'Можешь перейти в профиль', reply_markup=keyboard)
     elif message.text == 'Отмена':
@@ -112,20 +112,19 @@ def error(message):
     bot.register_next_step_handler(error_message, telephone)
 
 
+def get_link(to, profile):
+    return f'https://dayspick.ru/tgauth?user={profile.username}&code={profile.tg_code()}&to={to}'
+
 # bot.set_webhook(url="https://ede629051ed7.ngrok.io/bot/" + TELEGRAM_TOKEN)
 # bot.set_webhook(url="https://dayspick.ru/bot/" + TELEGRAM_TOKEN)
 
+
 class BotNotification:
     @classmethod
-    def send(cls, user, message, project):
-        code = user.tg_code()
-        username = user.username
-        to = f'project/{project.id}'
-        link = f'https://dayspick.ru/tgauth?user={username}&code={code}&to={to}'
-        # link = f'http://192.168.31.71:3000/tgauth?user={username}&code={code}&to={to}'
-        button = types.InlineKeyboardButton('Посмотреть', link)
+    def send(cls, profile, message, project):
+        button = types.InlineKeyboardButton('Посмотреть', get_link(f'project/{project.id}', profile))
         keyboard = types.InlineKeyboardMarkup().add(button)
-        bot.send_message(user.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
+        bot.send_message(profile.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
 
     @classmethod
     def create_project(cls, project):

@@ -166,8 +166,8 @@ class UserProfile(models.Model):
 
     @classmethod
     def create(cls, **kwargs):
-        username = kwargs.pop('username', f'user{UserProfile.objects.count() + 1}')
         import uuid
+        username = kwargs.pop('username', f'u{uuid.uuid4().hex[:16]}')
         password = kwargs.pop('password', uuid.uuid4().hex)
         password2 = kwargs.pop('password2', None)
         from django.db import IntegrityError

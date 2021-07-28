@@ -190,12 +190,13 @@ class RecursiveField(serializers.Serializer):
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        read_only_fields = ['id', 'date_start', 'date_end', 'parent_name', 'is_folder', 'children', 'creator_info']
+        read_only_fields = ['id', 'date_start', 'date_end', 'parent_name', 'is_folder', 'children', 'creator_info', 'user_info']
         fields = '__all__'
 
     days = ProjectDaySerializer(many=True, allow_null=True, default=None)
     client = ClientShortSerializer(allow_null=True, default=None)
     creator_info = serializers.SerializerMethodField('get_creator_info', allow_null=True)
+    user_info = serializers.SerializerMethodField('get_user_info', allow_null=True)
     user = serializers.CharField(allow_null=True)
     creator = serializers.CharField(allow_null=True)
     canceled = serializers.CharField(allow_null=True,  default=None)
@@ -208,6 +209,11 @@ class ProjectSerializer(serializers.ModelSerializer):
         if not obj.creator:
             return None
         return ProfileShortSerializer(obj.creator).data
+
+    def get_user_info(self, obj):
+        if not obj.creator:
+            return None
+        return ProfileShortSerializer(obj.user).data
 
     def get_parent_name(self, obj):
         if not obj.parent:
