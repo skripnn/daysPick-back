@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from api.bot import BotNotification
 from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer, \
@@ -41,6 +42,22 @@ class LoginView(APIView):
                 return Response(ProfileSerializer(profile).page(asker=profile, token=True))
             return Response({'error': 'Аккаунт не подтверждён'})
         return Response({"error": "Неверное имя пользователя или пароль"})
+
+
+class TgAuthView(APIView):
+    permission_classes = ()
+
+    def get(self, request):
+        code = int(request.GET.get('code', 0))
+        user = request.GET.get('user')
+        to = request.GET.get('to')
+
+        if not all((code, user, to)):
+            return Response({'error': 'Неверная ссылка'})
+        profile = UserProfile.get(user)
+        if code != profile.tg_code():
+            return Response({'error': 'Ошибка авторизации'})
+        return Response(profile.page(profile, token=True, additional={'to': to}))
 
 
 class LoginFacebookView(APIView):
@@ -181,6 +198,10 @@ class ProjectView(APIView):
             project.confirmed = True
             project.is_wait = True
             project.save()
+            if project.canceled == project.creator:
+                BotNotification.cancel_project(project)
+            elif project.canceled == project.user:
+                BotNotification.decline_project(project)
         else:
             project.delete()
 

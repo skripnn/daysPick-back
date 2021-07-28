@@ -114,3 +114,50 @@ def error(message):
 
 # bot.set_webhook(url="https://ede629051ed7.ngrok.io/bot/" + TELEGRAM_TOKEN)
 # bot.set_webhook(url="https://dayspick.ru/bot/" + TELEGRAM_TOKEN)
+
+class BotNotification:
+    @classmethod
+    def send(cls, user, message, project):
+        code = user.tg_code()
+        username = user.username
+        to = f'project/{project.id}'
+        link = f'https://dayspick.ru/tgauth?user={username}&code={code}&to={to}'
+        # link = f'http://192.168.31.71:3000/tgauth?user={username}&code={code}&to={to}'
+        button = types.InlineKeyboardButton('Посмотреть', link)
+        keyboard = types.InlineKeyboardMarkup().add(button)
+        bot.send_message(user.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
+
+    @classmethod
+    def create_project(cls, project):
+        if not project.user.telegram_chat_id:
+            return
+        message = 'Получен запрос на проект'
+        cls.send(project.user, message, project)
+
+    @classmethod
+    def accept_project(cls, project):
+        if not project.creator.telegram_chat_id:
+            return
+        message = f'Проект {project.title} был подтвержден пользователем {project.user.full_name}'
+        cls.send(project.creator, message, project)
+
+    @classmethod
+    def decline_project(cls, project):
+        if not project.creator.telegram_chat_id:
+            return
+        message = f'Пользователь {project.user.full_name} отказался от проекта {project.title}'
+        cls.send(project.creator, message, project)
+
+    @classmethod
+    def update_project(cls, project):
+        if not project.creator.telegram_chat_id:
+            return
+        message = f'Проект {project.title} был изменен'
+        cls.send(project.user, message, project)
+
+    @classmethod
+    def cancel_project(cls, project):
+        if not project.user.telegram_chat_id:
+            return
+        message = f'Проект {project.title} был отменён'
+        cls.send(project.user, message, project)

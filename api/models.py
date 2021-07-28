@@ -283,6 +283,9 @@ class UserProfile(models.Model):
         token, created = Token.objects.get_or_create(user=self.user)
         return token.key
 
+    def tg_code(self):
+        return int(self.user.date_joined.timestamp()) + self.telegram_chat_id
+
     def get_actual_projects(self, asker):
         if asker == self:
             return self.projects(asker).actual().reverse()
@@ -319,7 +322,7 @@ class UserProfile(models.Model):
             'daysOff': days_off.dates('date', 'day')
         }
 
-    def page(self, asker, token=False):
+    def page(self, asker, token=False, additional=None):
         from api.serializers import ProjectSerializer, ProfileSerializer, ProfileSelfSerializer
         if asker == self:
             profile_serializer = ProfileSelfSerializer
@@ -334,6 +337,8 @@ class UserProfile(models.Model):
         }
         if token:
             result['token'] = self.token()
+        if additional:
+            result.update(additional)
         return result
 
     def update(self, **kwargs):

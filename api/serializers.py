@@ -3,6 +3,7 @@ import datetime
 from django.utils import timezone
 from rest_framework import serializers
 
+from api.bot import BotNotification
 from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount
 
 
@@ -38,7 +39,7 @@ class TagSerializer(serializers.ModelSerializer):
 class ProfileShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['id', 'username', 'full_name']
+        fields = ['id', 'username', 'full_name', 'avatar']
         read_only_fields = ['id', 'username', 'full_name']
 
 
@@ -235,6 +236,8 @@ class ProjectSerializer(serializers.ModelSerializer):
         if parent:
             parent.children.add(project)
             parent.parent_days_set()
+        if project.user != project.creator:
+            BotNotification.create_project(project)
         return project
 
     def update(self, instance, validated_data):
@@ -264,6 +267,11 @@ class ProjectSerializer(serializers.ModelSerializer):
         instance.save()
         if instance.parent:
             instance.parent.parent_days_set()
+        if instance.user != instance.creator:
+            if instance.confirmed:
+                BotNotification.accept_project(instance)
+            else:
+                BotNotification.update_project(instance)
         return instance
 
     def parent_set(self, validated_data, instance=None):
