@@ -1,5 +1,6 @@
 import re
 import uuid
+from abc import ABCMeta, abstractmethod
 from datetime import datetime
 
 from django.contrib.auth import authenticate
@@ -28,6 +29,18 @@ def list_paginator(_class, data, serializer):
         'list': serializer(result, many=True).data,
         'pages': pages
     })
+
+
+class ListView(APIView, metaclass=ABCMeta):
+    def get(self, request):
+        return self.search(request, request.GET)
+
+    def post(self, request):
+        return self.search(request, request.data)
+
+    @abstractmethod
+    def search(self, request, data):
+        pass
 
 
 class LoginView(APIView):
@@ -167,6 +180,8 @@ class UserView(APIView):
             return Response(status=404)
         if request.GET.get('projects'):
             return Response(ProjectSerializer(profile.get_actual_projects(asker), many=True).data)
+        if request.GET.get('offers'):
+            return Response(ProjectSerializer(profile.get_actual_offers(), many=True).data)
         if request.GET.get('profile'):
             if request.GET['profile'] == 'short':
                 return Response(ProfileShortSerializer(profile).data)
@@ -237,11 +252,8 @@ class ProjectView(APIView):
         return Response({})
 
 
-class ClientsView(APIView):
-    def get(self, request):
-        return list_paginator(request.user.profile.clients, request.GET, ClientShortSerializer)
-
-    def post(self, request):
+class ClientsView(ListView):
+    def search(self, request, data):
         return list_paginator(request.user.profile.clients, request.data, ClientShortSerializer)
 
 
@@ -282,14 +294,11 @@ class DaysOffView(APIView):
         return Response({})
 
 
-class UsersView(APIView):
+class UsersView(ListView):
     permission_classes = ()
 
-    def get(self, request):
-        return list_paginator(UserProfile, request.GET, ProfileSerializer)
-
-    def post(self, request):
-        return list_paginator(UserProfile, request.data, ProfileSerializer)
+    def search(self, request, data):
+        return list_paginator(UserProfile, data, ProfileSerializer)
 
 
 class CalendarView(APIView):
@@ -301,12 +310,14 @@ class CalendarView(APIView):
             start = datetime.strptime(start, date_format).date()
         if end:
             end = datetime.strptime(end, date_format).date()
+        result = {}
+        if request.GET.get('offers'):
+            result[request.user.username] = request.user.profile.get_calendar(start=start, end=end, offers=True)
+            return Response(result)
         project_id = int(request.GET.get('project_id', 0))
         users = request.GET.getlist('users')
         if not users:
             users = request.GET.getlist('user')
-
-        result = {}
 
         for user in users:
             user_profile = UserProfile.get(user)
@@ -315,22 +326,13 @@ class CalendarView(APIView):
         return Response(result)
 
 
-class TestView(APIView):
-    def get(self, request):
+class TestView(ListView):
+    def search(self, request, data):
         projects = request.user.profile.projects().without_children()
         return list_paginator(projects, {}, ProjectsListItemSerializer)
 
-    def post(self, request):
-        return self.get(request)
 
-
-class ProjectsView(APIView):
-    def get(self, request):
-        return self.search(request, request.GET)
-
-    def post(self, request):
-        return self.search(request, request.data)
-
+class ProjectsView(ListView):
     def search(self, request, data):
         user = UserProfile.get(data.get('user'))
         asker = UserProfile.get(request.user)
@@ -344,6 +346,13 @@ class ProjectsView(APIView):
         else:
             projects = user.projects(asker).filter(creator=asker)
 
+        return list_paginator(projects, data, ProjectSerializer)
+
+
+class OffersView(ListView):
+    def search(self, request, data):
+        user = UserProfile.get(request.user)
+        projects = user.offers()
         return list_paginator(projects, data, ProjectSerializer)
 
 

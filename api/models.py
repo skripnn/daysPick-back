@@ -156,9 +156,12 @@ class UserProfile(models.Model):
         return self.user.username
 
     def projects(self, asker=None):
-        if asker is None:
+        if not asker:
             asker = self
         return self.all_projects.exclude(creator__isnull=True).exclude(canceled=asker)
+
+    def offers(self):
+        return self.created_projects.exclude(user=self).exclude(canceled=self)
 
     @property
     def days_off_project(self):
@@ -293,28 +296,41 @@ class UserProfile(models.Model):
             return []
         return self.projects(asker).filter(creator=asker).actual().reverse()
 
-    def get_calendar(self, asker=None, start=None, end=None, project_id=0):
-        user_days = Day.objects.filter(project__user=self).exclude(project_id=project_id)
+    def get_actual_offers(self):
+        return self.offers().actual().reverse()
+
+    def get_calendar(self, asker=None, start=None, end=None, project_id=0, offers=False):
+        from api.serializers import CalendarDaySerializer
+        if offers:
+            all_days = Day.objects.filter(project__creator=self).exclude(project__user=self)
+        else:
+            all_days = Day.objects.filter(project__user=self)
+        all_days = all_days.exclude(project__canceled=self).exclude(project_id=project_id)
+
         if start and end:
-            user_days = user_days.filter(date__range=[start, end])
+            all_days = all_days.filter(date__range=[start, end])
         elif start:
-            user_days = user_days.filter(date__gte=start)
+            all_days = all_days.filter(date__gte=start)
         elif end:
-            user_days = user_days.filter(date__lte=end)
+            all_days = all_days.filter(date__lte=end)
+
+        if offers:
+            return {
+                'days': CalendarDaySerializer(all_days, many=True).dict()
+            }
 
         if not asker:
-            days_off = user_days.exclude(project__is_wait=True)
+            days_off = all_days.exclude(project__is_wait=True)
             days = {}
         else:
             if asker == self:
-                days_off = user_days.exclude(project__creator__isnull=False)
-                days = user_days.filter(project__creator__isnull=False).exclude(
+                days_off = all_days.exclude(project__creator__isnull=False)
+                days = all_days.filter(project__creator__isnull=False).exclude(
                     project__canceled=self)
             else:
-                days_off = user_days.exclude(project__creator=asker).exclude(project__is_wait=True)
-                days = user_days.filter(project__creator=asker).exclude(
+                days_off = all_days.exclude(project__creator=asker).exclude(project__is_wait=True)
+                days = all_days.filter(project__creator=asker).exclude(
                     project__canceled=asker)
-            from api.serializers import CalendarDaySerializer
             days = CalendarDaySerializer(days, many=True).dict()
 
         return {
@@ -335,6 +351,9 @@ class UserProfile(models.Model):
             'projects': ProjectSerializer(self.get_actual_projects(asker), many=True).data,
             'calendar': self.get_calendar(asker, start_date)
         }
+        if asker == self:
+            result['offers'] = ProjectSerializer(self.get_actual_offers(), many=True).data
+            result['offersCalendar'] = self.get_calendar(start=start_date, offers=True)
         if token:
             result['token'] = self.token()
         if additional:

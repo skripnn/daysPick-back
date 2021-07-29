@@ -17,7 +17,7 @@ from django.urls import path
 
 from api.apiviews import ProjectView, UserView, LoginView, SignupView, DaysOffView, UsersView, \
     ConfirmView, CalendarView, ProjectsView, ClientsView, ClientView, UserProfileView, \
-    TagsView, ImgView, LoginFacebookView, RaiseProfileView, TestView, TgAuthView, LoginTelegramView
+    TagsView, ImgView, LoginFacebookView, RaiseProfileView, TestView, TgAuthView, LoginTelegramView, OffersView
 
 urlpatterns = [
     path('login/facebook/', LoginFacebookView.as_view()),
@@ -39,8 +39,10 @@ urlpatterns = [
 
     path('daysoff/', DaysOffView.as_view()),
 
+    path('calendar/offers/', CalendarView.as_view()),
     path('calendar/', CalendarView.as_view()),
 
+    path('offers/', OffersView.as_view()),
     path('projects/', ProjectsView.as_view()),
     path('project/<int:pk>/', ProjectView.as_view()),
     path('project/', ProjectView.as_view()),
