@@ -8,3 +8,5 @@
 /test.txt
 /media/
 /database.dmp
+/ngrok
+/postgres_scripts/backup.sql

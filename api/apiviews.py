@@ -305,14 +305,15 @@ class CalendarView(APIView):
     permission_classes = ()
 
     def get(self, request):
+        asker = UserProfile.get(request.user)
         start, end = request.GET.get('start'), request.GET.get('end')
         if start:
             start = datetime.strptime(start, date_format).date()
         if end:
             end = datetime.strptime(end, date_format).date()
         result = {}
-        if request.GET.get('offers'):
-            result[request.user.username] = request.user.profile.get_calendar(start=start, end=end, offers=True)
+        if asker and request.GET.get('offers'):
+            result[asker.username] = asker.get_calendar(start=start, end=end, offers=True)
             return Response(result)
         project_id = int(request.GET.get('project_id', 0))
         users = request.GET.getlist('users')
@@ -321,7 +322,7 @@ class CalendarView(APIView):
 
         for user in users:
             user_profile = UserProfile.get(user)
-            result[user] = user_profile.get_calendar(request.user.profile, start, end, project_id)
+            result[user] = user_profile.get_calendar(asker, start, end, project_id)
 
         return Response(result)
 

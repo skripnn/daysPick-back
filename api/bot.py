@@ -115,7 +115,8 @@ def error(message):
 def get_link(to, profile):
     return f'https://dayspick.ru/tgauth?user={profile.username}&code={profile.tg_code()}&to={to}'
 
-# bot.set_webhook(url="https://ede629051ed7.ngrok.io/bot/" + TELEGRAM_TOKEN)
+
+# bot.set_webhook(url="https://091ea319baa5.ngrok.io/bot/" + TELEGRAM_TOKEN)
 # bot.set_webhook(url="https://dayspick.ru/bot/" + TELEGRAM_TOKEN)
 
 
