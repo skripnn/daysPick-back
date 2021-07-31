@@ -1,4 +1,5 @@
 import re
+import uuid
 from datetime import datetime, timedelta
 from functools import reduce
 
@@ -125,7 +126,7 @@ class ClientsManager(models.Manager):
 
 
 class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='profile', null=True)
     first_name = models.CharField(max_length=64, **null)
     last_name = models.CharField(max_length=64, **null)
     email = models.EmailField(**null)
@@ -140,6 +141,31 @@ class UserProfile(models.Model):
     avatar = models.ImageField(upload_to='avatars', **null)
     photo = models.ImageField(upload_to='photos', **null)
     raised = models.DateTimeField(default=timezone.now)
+
+    def delete(self, using=None, keep_parents=False):
+        fields = self._meta.fields
+        for f in fields:
+            if f.null:
+                if f.one_to_one:
+                    related_field = getattr(self, f.name)
+                    if related_field:
+                        related_field.delete()
+                setattr(self, f.name, None)
+            elif f.has_default():
+                if callable(f.default):
+                    default = f.default()
+                else:
+                    default = f.default
+                setattr(self, f.name, default)
+        self.tags.all().delete()
+        self.clients.all().delete()
+        self.all_projects.filter(creator=self, user=self).delete()
+        self.days_off_project.delete()
+        self.save()
+
+    @property
+    def is_deleted(self):
+        return not bool(self.user)
 
     @property
     def is_confirmed(self):
@@ -156,6 +182,8 @@ class UserProfile(models.Model):
 
     @property
     def username(self):
+        if not self.user:
+            return '<DELETED>'
         return self.user.username
 
     def projects(self, asker=None):
@@ -172,7 +200,6 @@ class UserProfile(models.Model):
 
     @classmethod
     def create(cls, **kwargs):
-        import uuid
         username = kwargs.pop('username', f'u{uuid.uuid4().hex[:16]}')
         password = kwargs.pop('password', uuid.uuid4().hex)
         password2 = kwargs.pop('password2', None)
@@ -187,7 +214,6 @@ class UserProfile(models.Model):
             user = User.objects.filter(username=username).first()
             if user:
                 user.delete()
-            import re
             m = re.search(r'Key\s\((.+)\)=\((.+)\)', error.args[0])
             key, value = m.group(1), m.group(2)
             profile = cls.objects.get(**{f'{key}': value})
@@ -203,7 +229,7 @@ class UserProfile(models.Model):
             if re.match('^79[0-9]{9}$', username):
                 phone = username
                 return cls.objects.filter(phone_confirm=phone).first() or alt
-        return cls.objects.filter(user__username=username).first() or alt
+        return cls.objects.exclude(user__isnull=True).filter(user__username=username).first() or alt
 
     @classmethod
     def search(cls, **kwargs):
@@ -439,10 +465,10 @@ class UserProfile(models.Model):
         return False
 
     def __str__(self):
-        return self.user.username
+        return self.username
 
     def __repr__(self):
-        return self.user.username
+        return self.username
 
 
 class Client(models.Model):

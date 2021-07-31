@@ -1,14 +1,15 @@
 import os
 
+from django.contrib.auth.models import User
 from django.db import models
 from django.dispatch import receiver
 
-from .models import UserProfile, Project
+from .models import UserProfile
 
 
 @receiver(models.signals.post_save, sender=UserProfile)
 def profile_post_save(sender, instance, **kwargs):
-    if not instance.is_confirmed:
+    if not instance.is_confirmed and not instance.is_deleted:
         from .tasks import check_user_confirmation
         check_user_confirmation.apply_async((instance.username, ), countdown=30 * 60)
 

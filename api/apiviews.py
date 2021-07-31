@@ -185,6 +185,13 @@ class UserView(APIView):
             return Response(ProfileSerializer(profile).data)
         return Response(profile.page(asker))
 
+    def delete(self, request, username=None):
+        profile = UserProfile.get(request.user)
+        if profile:
+            profile.delete()
+            return Response(status=200)
+        return Response({'error': 'Пользователь не найден'})
+
 
 class RaiseProfileView(APIView):
     def get(self, request):
@@ -317,7 +324,8 @@ class CalendarView(APIView):
 
         for user in users:
             user_profile = UserProfile.get(user)
-            result[user] = user_profile.get_calendar(asker, start, end, project_id)
+            if user_profile:
+                result[user] = user_profile.get_calendar(asker, start, end, project_id)
 
         return Response(result)
 
