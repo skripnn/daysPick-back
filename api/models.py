@@ -41,7 +41,7 @@ class Tag(models.Model):
 
             tags = exact | exact_spelled | starts | starts_spelled | contain | contain_spelled
 
-        return tags
+        return tags[:15]
 
 
 class ProfileTagManager(models.Manager):

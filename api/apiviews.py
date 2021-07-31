@@ -109,11 +109,6 @@ class LoginTelegramView(APIView):
                 'last_name': request.data.get('last_name'),
                 'telegram_chat_id': int(request.data.get('id'))
             }
-            username = request.data.get('username')
-            if User.objects.filter(username=username).count() != 0:
-                data['username'] = f'u{uuid.uuid4().hex[:16]}'
-            else:
-                data['username'] = username
             profile = UserProfile.create(**data).update(telegram_chat_id=data['telegram_chat_id'])
         return Response(profile.page(asker=profile, token=True))
 
@@ -254,7 +249,7 @@ class ProjectView(APIView):
 
 class ClientsView(ListView):
     def search(self, request, data):
-        return list_paginator(request.user.profile.clients, request.data, ClientShortSerializer)
+        return list_paginator(request.user.profile.clients, data, ClientShortSerializer)
 
 
 class ClientView(APIView):

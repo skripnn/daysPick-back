@@ -123,41 +123,33 @@ def get_link(to, profile):
 class BotNotification:
     @classmethod
     def send(cls, profile, message, project):
+        if not profile.telegram_chat_id:
+            return
         button = types.InlineKeyboardButton('Посмотреть', get_link(f'project/{project.id}', profile))
         keyboard = types.InlineKeyboardMarkup().add(button)
         bot.send_message(profile.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
 
     @classmethod
     def create_project(cls, project):
-        if not project.user.telegram_chat_id:
-            return
         message = 'Получен запрос на проект'
         cls.send(project.user, message, project)
 
     @classmethod
     def accept_project(cls, project):
-        if not project.creator.telegram_chat_id:
-            return
         message = f'Проект {project.title} был подтвержден пользователем {project.user.full_name}'
         cls.send(project.creator, message, project)
 
     @classmethod
     def decline_project(cls, project):
-        if not project.creator.telegram_chat_id:
-            return
         message = f'Пользователь {project.user.full_name} отказался от проекта {project.title}'
         cls.send(project.creator, message, project)
 
     @classmethod
     def update_project(cls, project):
-        if not project.creator.telegram_chat_id:
-            return
         message = f'Проект {project.title} был изменен'
         cls.send(project.user, message, project)
 
     @classmethod
     def cancel_project(cls, project):
-        if not project.user.telegram_chat_id:
-            return
         message = f'Проект {project.title} был отменён'
         cls.send(project.user, message, project)
