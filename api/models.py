@@ -5,7 +5,7 @@ from functools import reduce
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models, OperationalError
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.utils import timezone
 from pyaspeller import YandexSpeller
 
@@ -14,6 +14,7 @@ null = {'null': True, 'blank': True}
 
 class Tag(models.Model):
     title = models.CharField(max_length=64)
+    default = models.BooleanField(default=False)
 
     def __str__(self):
         return self.title
@@ -41,6 +42,8 @@ class Tag(models.Model):
 
             tags = exact | exact_spelled | starts | starts_spelled | contain | contain_spelled
 
+        tags = tags.annotate(num_of_uses=Count('profile_tags')).order_by('-num_of_uses')
+
         return tags[:15]
 
 
@@ -61,7 +64,7 @@ class ProfileTagManager(models.Manager):
             tags.append(profile_tag)
         self.set(tags)
         ProfileTag.objects.filter(user__isnull=True).delete()
-        Tag.objects.filter(profile_tags__user__isnull=True).delete()
+        Tag.objects.filter(profile_tags__user__isnull=True).exclude(default=True).delete()
         return self.list()
 
 

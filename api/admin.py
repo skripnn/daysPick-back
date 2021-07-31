@@ -57,6 +57,11 @@ class ClientAdmin(admin.ModelAdmin):
     list_display = ('name', 'company', 'user')
 
 
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ('title', 'default')
+
+
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'first_name', 'last_name', 'is_confirmed')
@@ -66,4 +71,3 @@ class UserProfileAdmin(admin.ModelAdmin):
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(FacebookAccount)
-admin.site.register(Tag)
