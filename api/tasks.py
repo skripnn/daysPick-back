@@ -6,6 +6,6 @@ def check_user_confirmation(username):
     from api.models import UserProfile
     profile = UserProfile.get(username)
     if profile:
-        if not profile.is_confirmed:
+        if not profile.telegram_chat_id and not profile.is_confirmed:
             profile.delete()
             print(f'Profile {username} was deleted because it was not confirmed')

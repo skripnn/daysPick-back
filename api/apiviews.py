@@ -89,11 +89,6 @@ class LoginFacebookView(APIView):
                 'last_name': request.data.get('last_name'),
                 'email_confirm': request.data.get('email')
             }
-            username = re.sub(r'\s', '', request.data.get('name'))
-            if User.objects.filter(username=username).count() != 0:
-                data['username'] = f'u{uuid.uuid4().hex[:16]}'
-            else:
-                data['username'] = username
             profile = UserProfile.create(**data).update(facebook_account=request.data)
         return Response(profile.page(asker=profile, token=True))
 
@@ -189,7 +184,7 @@ class UserView(APIView):
         profile = UserProfile.get(request.user)
         if profile:
             profile.delete()
-            return Response(status=200)
+            return Response({'status': 'ok'})
         return Response({'error': 'Пользователь не найден'})
 
 

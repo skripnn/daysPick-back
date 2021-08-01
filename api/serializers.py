@@ -47,11 +47,15 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         exclude = ['id', 'user', 'raised']
-        read_only_fields = ['get_can_be_raised']
+        read_only_fields = ['get_can_be_raised', 'get_is_confirmed']
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
     facebook_account = FacebookAccountSerializer(allow_null=True)
+    is_confirmed = serializers.SerializerMethodField('get_is_confirmed')
+
+    def get_is_confirmed(self, instance):
+        return instance.is_confirmed
 
     def to_representation(self, obj):
         ret = super().to_representation(obj)

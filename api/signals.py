@@ -1,6 +1,5 @@
 import os
 
-from django.contrib.auth.models import User
 from django.db import models
 from django.dispatch import receiver
 
@@ -53,4 +52,5 @@ def auto_delete_file_on_delete(sender, instance, **kwargs):
 
 @receiver(models.signals.post_delete, sender=UserProfile)
 def auto_delete_user(sender, instance, **kwargs):
-    instance.user.delete()
+    if instance.user:
+        instance.user.delete()

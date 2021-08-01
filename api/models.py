@@ -169,7 +169,7 @@ class UserProfile(models.Model):
 
     @property
     def is_confirmed(self):
-        return bool(self.email_confirm or self.phone_confirm or self.facebook_account)
+        return bool(self.email_confirm or self.phone_confirm)
 
     @property
     def full_name(self):
