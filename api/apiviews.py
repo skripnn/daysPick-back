@@ -14,7 +14,7 @@ from api.bot import BotNotification
 from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer, \
-    ProjectsListItemSerializer, ProfileShortSerializer
+    ProjectsListItemSerializer, ProfileShortSerializer, ContactsSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -359,6 +359,12 @@ class UserProfileView(APIView):
     def post(self, request):
         profile = request.user.profile.update(**request.data)
         return Response(ProfileSelfSerializer(profile).data)
+
+
+class ContactsView(APIView):
+    def post(self, request):
+        contacts = request.user.profile.contacts.update(**request.data)
+        return Response(ContactsSerializer(contacts).data)
 
 
 class ImgView(APIView):

@@ -4,7 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from api.bot import BotNotification
-from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount
+from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, Contacts
 
 
 def update_data(instance, validated_data, fields: list or str):
@@ -36,6 +36,12 @@ class TagSerializer(serializers.ModelSerializer):
         fields = ['id', 'title']
 
 
+class ContactsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Contacts
+        exclude = ['id', 'user']
+
+
 class ProfileShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
@@ -47,12 +53,13 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         exclude = ['id', 'user', 'raised']
-        read_only_fields = ['get_can_be_raised', 'get_is_confirmed']
+        read_only_fields = ['get_can_be_raised', 'get_is_confirmed', 'contacts']
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
     facebook_account = FacebookAccountSerializer(allow_null=True)
     is_confirmed = serializers.SerializerMethodField('get_is_confirmed')
+    contacts = ContactsSerializer()
 
     def get_is_confirmed(self, instance):
         return instance.is_confirmed

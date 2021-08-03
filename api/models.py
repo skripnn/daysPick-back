@@ -125,6 +125,19 @@ class ClientsManager(models.Manager):
         return clients
 
 
+class Contacts(models.Model):
+    user = models.OneToOneField('UserProfile', on_delete=models.CASCADE, related_name='contacts')
+    email = models.EmailField(**null)
+    phone = models.CharField(max_length=32, **null)
+    telegram = models.CharField(max_length=32, **null)
+
+    def update(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        self.save()
+        return self
+
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='profile', null=True)
     first_name = models.CharField(max_length=64, **null)
@@ -206,6 +219,7 @@ class UserProfile(models.Model):
         from django.db import IntegrityError
         try:
             profile = cls.objects.create(user=User.objects.create_user(username=username, password=password), **kwargs)
+            Contacts.objects.create(user=profile)
             from api.bot import admins_notification
             admins_notification(f'Новый пользователь зарегистрирован.\nusername: {username}')
             if profile and profile.email:
