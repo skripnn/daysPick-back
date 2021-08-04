@@ -15,8 +15,14 @@ def profile_post_save(sender, instance, **kwargs):
 
 @receiver(models.signals.pre_save, sender=UserProfile)
 def profile_pre_save(sender, instance, **kwargs):
-    if not instance.phone_confirm:
+    if not instance.is_confirmed:
         instance.is_public = False
+        instance.save()
+    else:
+        profile = UserProfile.get(instance.username)
+        if profile and not profile.is_confirmed:
+            instance.is_public = True
+
 
 
 @receiver(models.signals.pre_save, sender=UserProfile)

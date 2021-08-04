@@ -424,8 +424,6 @@ class UserProfile(models.Model):
                     ext = value.content_type.split('/')[-1]
                     filename = uuid.uuid4().hex
                     value.name = f'{filename}.{ext}'
-                if key == 'phone_confirm' and not self.phone_confirm:
-                    self.is_public = True
                 setattr(self, key, value)
                 if key == 'email' and value:
                     self.send_confirmation_email()
@@ -602,7 +600,20 @@ class Project(models.Model):
         self.save()
 
     def __str__(self):
-        return ' - '.join([str(self.user), str(self.id), str(self.title or '*days_off*')])
+        if not self.creator:
+            return f'{self.user} - * days_off*'
+
+        title = str(self.title)
+        if not title:
+            start = str(self.date_start)
+            end = str(self.date_end)
+            title = start
+            if end != start:
+                title += ' - ' + end
+        if self.parent:
+            title = str(self.parent.title) + ' / ' + title
+
+        return f'{self.id} - {title}'
 
 
 class Day(models.Model):

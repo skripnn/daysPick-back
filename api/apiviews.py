@@ -6,6 +6,7 @@ from datetime import datetime
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
+from django.db.models import Sum, Count
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -392,3 +393,25 @@ class TagsView(APIView):
         )
         serializer = TagSerializer(request.user.profile.tags.list(), many=True)
         return Response(serializer.data)
+
+
+class ProjectsStatisticsView(APIView):
+    def post(self, request):
+        profile = request.user.profile
+
+        if request.data:
+            projects = profile.projects().search(**request.data)
+            days = Day.objects.filter(project__in=projects)
+            dates = request.data.get('days')
+            if dates:
+                dates = [datetime.strptime(date, '%Y-%m-%d') for date in dates]
+                days = days.filter(date__in=dates)
+        else:
+            days = Day.objects.filter(project__user=profile, project__creator__isnull=False)
+
+        result = days.aggregate(
+            sum=Sum('project__money_per_day'),
+            days=Count('date', distinct=True),
+            projects=Count('project', distinct=True))
+
+        return Response(result)
