@@ -569,7 +569,7 @@ class Project(models.Model):
     title = models.CharField(max_length=64, **null)
     client = models.ForeignKey(Client, on_delete=models.SET_NULL, **null, related_name='projects')
     money = models.IntegerField(**null)
-    money_per_day = models.IntegerField(**null)
+    money_per_day = models.FloatField(**null)
     money_calculating = models.BooleanField(default=False)
     info = models.TextField(**null)
     is_paid = models.BooleanField(default=False)

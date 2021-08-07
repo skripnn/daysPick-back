@@ -1,5 +1,4 @@
 import re
-import uuid
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
 
@@ -7,6 +6,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Sum, Count
+from django.db.models.functions import Round
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,7 +14,7 @@ from rest_framework.views import APIView
 from api.bot import BotNotification
 from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag
 from api.serializers import ProjectSerializer, ProfileSerializer, \
-    ClientShortSerializer, ProfileSelfSerializer, CalendarDaySerializer, ClientSerializer, TagSerializer, \
+    ClientShortSerializer, ProfileSelfSerializer, ClientSerializer, TagSerializer, \
     ProjectsListItemSerializer, ProfileShortSerializer, ContactsSerializer
 
 date_format = '%Y-%m-%d'
@@ -410,7 +410,7 @@ class ProjectsStatisticsView(APIView):
             days = Day.objects.filter(project__user=profile, project__creator__isnull=False)
 
         result = days.aggregate(
-            sum=Sum('project__money_per_day'),
+            sum=Round(Sum('project__money_per_day')),
             days=Count('date', distinct=True),
             projects=Count('project', distinct=True))
 
