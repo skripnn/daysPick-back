@@ -154,6 +154,7 @@ class UserProfile(models.Model):
     avatar = models.ImageField(upload_to='avatars', **null)
     photo = models.ImageField(upload_to='photos', **null)
     raised = models.DateTimeField(default=timezone.now)
+    info = models.TextField(**null)
 
     def delete(self, using=None, keep_parents=False):
         fields = self._meta.fields
