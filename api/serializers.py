@@ -110,9 +110,7 @@ class ClientShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         fields = ['id', 'name', 'company', 'full_name']
-        read_only_fields = ['id', 'full_name']
-
-    full_name = serializers.CharField()
+        read_only_fields = ['full_name']
 
     def create(self, validated_data):
         return Client.objects.get_or_create(**validated_data)[0]
@@ -206,7 +204,7 @@ class RecursiveField(serializers.Serializer):
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        read_only_fields = ['id', 'date_start', 'date_end', 'is_folder', 'children', 'creator_info', 'user_info']
+        read_only_fields = ['id', 'date_start', 'date_end', 'is_folder', 'children', 'creator_info', 'user_info', 'responses']
         fields = '__all__'
 
     days = ProjectDaySerializer(many=True, allow_null=True, default=None)
@@ -219,7 +217,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     children = RecursiveField(many=True, allow_null=True, read_only=True)
     is_folder = serializers.BooleanField(read_only=True)
     parent = serializers.SerializerMethodField('get_parent', allow_null=True)
-    responses = ProjectResponseSerializer(allow_null=True, many=True)
+    responses = ProjectResponseSerializer(allow_null=True, many=True, read_only=True)
 
     def get_creator_info(self, obj):
         if not obj.creator:

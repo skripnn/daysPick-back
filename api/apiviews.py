@@ -170,9 +170,9 @@ class UserView(APIView):
         if not profile:
             return Response(status=404)
         if request.GET.get('projects'):
-            return Response(ProjectSerializer(profile.get_actual_projects(asker), many=True).data)
+            return Response(ProjectListItemSerializer(profile.get_actual_projects(asker), many=True).data)
         if request.GET.get('offers'):
-            return Response(ProjectSerializer(profile.get_actual_offers(), many=True).data)
+            return Response(ProjectListItemSerializer(profile.get_actual_offers(), many=True).data)
         if request.GET.get('profile'):
             if request.GET['profile'] == 'short':
                 return Response(ProfileShortSerializer(profile).data)
