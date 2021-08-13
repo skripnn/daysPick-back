@@ -1,7 +1,9 @@
+import datetime
+
 from django.contrib import admin
 from django.contrib.auth.models import User
 
-from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount
+from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount, ProjectResponse
 
 
 class UserProfileInline(admin.StackedInline):
@@ -43,8 +45,13 @@ class DayInline(admin.TabularInline):
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'creator', 'title', 'client', 'is_paid')
+    list_display = ('id', 'get_title', 'creator', 'user', 'client', 'is_paid')
     inlines = [DayInline]
+
+    def get_title(self, obj):
+        return str(obj)
+
+    get_title.short_description = 'title'
 
 
 @admin.register(Day)
@@ -66,6 +73,11 @@ class TagAdmin(admin.ModelAdmin):
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'first_name', 'last_name', 'is_confirmed')
     inlines = (TagsInline,)
+
+
+@admin.register(ProjectResponse)
+class ProjectResponseAdmin(admin.ModelAdmin):
+    list_display = ('id', 'project', 'user', 'time')
 
 
 admin.site.unregister(User)

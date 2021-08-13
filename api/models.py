@@ -240,6 +240,8 @@ class UserProfile(models.Model):
             return alt
         if isinstance(username, User):
             return cls.objects.filter(user=username).first() or alt
+        if isinstance(username, cls):
+            return username
         if isinstance(username, str):
             if re.match('^79[0-9]{9}$', username):
                 phone = username
@@ -390,13 +392,14 @@ class UserProfile(models.Model):
             profile_serializer = ProfileSerializer
         start_date = datetime.now().date()
         start_date = start_date - timedelta(start_date.weekday() + 15 * 7)
+        from api.serializers import ProjectListItemSerializer
         result = {
             'user': profile_serializer(self).data,
-            'projects': ProjectSerializer(self.get_actual_projects(asker), many=True).data,
+            'projects': ProjectListItemSerializer(self.get_actual_projects(asker), many=True).data,
             'calendar': self.get_calendar(asker, start_date)
         }
         if asker == self:
-            result['offers'] = ProjectSerializer(self.get_actual_offers(), many=True).data
+            result['offers'] = ProjectListItemSerializer(self.get_actual_offers(), many=True).data
             result['offersCalendar'] = self.get_calendar(start=start_date, offers=True)
         if token:
             result['token'] = self.token()
@@ -494,8 +497,15 @@ class Client(models.Model):
 
     objects = ClientsManager()
 
+    @property
+    def full_name(self):
+        full_name = self.name
+        if self.company:
+            full_name += f' ({self.company})'
+        return full_name
+
     def __str__(self):
-        return ' - '.join([str(self.user), f'{self.name} ({self.company})'])
+        return self.full_name
 
 
 class ProjectsQuerySet(models.QuerySet):
@@ -510,7 +520,8 @@ class ProjectsQuerySet(models.QuerySet):
 
     def actual(self):
         today = timezone.now().date()
-        return self.without_children().filter(Q(date_end__gte=today) | Q(is_paid=False)).filter(Q(children__isnull=True) | Q(children__is_paid=False)).distinct()
+        # return self.without_children().filter(Q(date_end__gte=today) | Q(is_paid=False)).filter(Q(children__isnull=True) | Q(children__is_paid=False)).distinct()
+        return self.without_folders().filter(Q(date_end__gte=today) | Q(is_paid=False)).distinct()
 
     def search(self, **kwargs):
         search = kwargs.get('filter')
@@ -593,6 +604,8 @@ class Project(models.Model):
         self.children.remove(child)
         if self.children.count() == 0:
             self.delete()
+        else:
+            self.parent_days_set()
 
     def parent_days_set(self):
         days = [day.date for day in Day.objects.filter(project__parent=self)]
@@ -600,9 +613,25 @@ class Project(models.Model):
         self.date_end = days[-1]
         self.save()
 
+    @classmethod
+    def get(cls, data):
+        if isinstance(data, int):
+            return cls.objects.filter(id=data).first()
+        if isinstance(data, dict):
+            return cls.objects.filter(**data).first()
+        return None
+
+    def update(self, **data):
+        for key, value in data:
+            try:
+                setattr(self, key, value)
+            except AttributeError as error:
+                print(error)
+            self.save()
+
     def __str__(self):
         if not self.creator:
-            return f'{self.user} - * days_off*'
+            return '*days_off*'
 
         title = str(self.title)
         if not title:
@@ -614,7 +643,7 @@ class Project(models.Model):
         if self.parent:
             title = str(self.parent.title) + ' / ' + title
 
-        return f'{self.id} - {title}'
+        return title
 
 
 class Day(models.Model):
@@ -636,3 +665,13 @@ class FacebookAccount(models.Model):
 
     def __str__(self):
         return f'{self.name } ({self.id})'
+
+
+class ProjectResponse(models.Model):
+    class Meta:
+        ordering = ['project', 'time']
+
+    project = models.ForeignKey('Project', related_name='responses', on_delete=models.CASCADE)
+    user = models.ForeignKey('UserProfile', related_name='responses', on_delete=models.CASCADE)
+    comment = models.TextField(**null)
+    time = models.DateTimeField(auto_now_add=True)

@@ -22,11 +22,11 @@ def check_django_server():
 
 def start_nginx():
     print('Starting `nginx`...')
-    subprocess.call('brew services restart nginx', shell=True)
+    subprocess.call('sudo -S brew services restart nginx', shell=True)
 
 
 def stop_nginx():
-    subprocess.call('brew services stop nginx', shell=True)
+    subprocess.call('sudo -S brew services stop nginx', shell=True)
 
 
 def stop_ngrok():
@@ -73,7 +73,8 @@ def set_bot_webhook(address):
 
 def facebook_url_setup(address):
     if address:
-        print(f'CHANGE FACEBOOK DEVELOPER DOMAIN here: https://developers.facebook.com/apps/269078168271491/settings/basic/\n')
+        from timespick.keys import facebook_dev_id
+        print(f'CHANGE FACEBOOK DEVELOPER DOMAIN here: https://developers.facebook.com/apps/{facebook_dev_id}/settings/basic/\n')
 
 
 def start():

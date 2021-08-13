@@ -3,7 +3,6 @@ from rest_framework.views import APIView
 from telebot import TeleBot, types
 import re
 
-from api.models import UserProfile
 from timespick.keys import TELEGRAM_TOKEN, admin_ids
 
 
@@ -32,6 +31,7 @@ def start(message, username=None):
 
 
 def validation_username(text):
+    from api.models import UserProfile
     if isinstance(text, UserProfile):
         return text
     if text.startswith('/start '):
@@ -123,11 +123,10 @@ def get_link(to, profile):
 class BotNotification:
     @classmethod
     def send(cls, profile, message, project):
-        if not profile.telegram_chat_id:
-            return
-        button = types.InlineKeyboardButton('Посмотреть', get_link(f'project/{project.id}', profile))
-        keyboard = types.InlineKeyboardMarkup().add(button)
-        bot.send_message(profile.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
+        if profile and profile.telegram_chat_id:
+            button = types.InlineKeyboardButton('Посмотреть', get_link(f'project/{project.id}', profile))
+            keyboard = types.InlineKeyboardMarkup().add(button)
+            bot.send_message(profile.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
 
     @classmethod
     def create_project(cls, project):

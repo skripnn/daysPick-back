@@ -12,10 +12,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.bot import BotNotification
-from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag
+from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag, ProjectResponse
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, ClientSerializer, TagSerializer, \
-    ProjectsListItemSerializer, ProfileShortSerializer, ContactsSerializer
+    ProjectListItemSerializer, ProfileShortSerializer, ContactsSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -201,15 +201,17 @@ class ProjectView(APIView):
         if pk is not None:
             project = Project.objects.filter(pk=pk).first()
             if project:
+                if not project.user:
+                    return Response(ProjectSerializer(project).data)
                 if any((request.user.profile == project.creator,
-                        request.user.profile == project.user)) and request.user.profile != project.canceled:
+                        request.user.profile == project.user,)) and request.user.profile != project.canceled:
                     return Response(ProjectSerializer(project).data)
         return Response(status=404)
 
     def post(self, request, pk=None):
         data = request.data
-        if not data.get('user'):
-            data['user'] = request.user.username
+        # if not data.get('user'):
+        #     data['user'] = request.user.username
         project = None
         if pk is not None:
             project = Project.objects.get(pk=pk)
@@ -329,7 +331,7 @@ class CalendarView(APIView):
 class TestView(ListView):
     def search(self, request, data):
         projects = request.user.profile.projects().without_children()
-        return list_paginator(projects, {}, ProjectsListItemSerializer)
+        # return list_paginator(projects, {}, ProjectsListItemSerializer)
 
 
 class ProjectsView(ListView):
@@ -346,14 +348,14 @@ class ProjectsView(ListView):
         else:
             projects = user.projects(asker).filter(creator=asker)
 
-        return list_paginator(projects, data, ProjectSerializer)
+        return list_paginator(projects, data, ProjectListItemSerializer)
 
 
 class OffersView(ListView):
     def search(self, request, data):
         user = UserProfile.get(request.user)
         projects = user.offers()
-        return list_paginator(projects, data, ProjectSerializer)
+        return list_paginator(projects, data, ProjectListItemSerializer)
 
 
 class UserProfileView(APIView):
@@ -415,3 +417,9 @@ class ProjectsStatisticsView(APIView):
             projects=Count('project', distinct=True))
 
         return Response(result)
+
+
+class ProjectResponseView(APIView):
+    def post(self, request, pk):
+        ProjectResponse.objects.get_or_create(project_id=pk, user=request.user.profile, **request.data)
+        return Response(status=200)

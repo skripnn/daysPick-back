@@ -17,7 +17,6 @@ def profile_post_save(sender, instance, **kwargs):
 def profile_pre_save(sender, instance, **kwargs):
     if not instance.is_confirmed:
         instance.is_public = False
-        instance.save()
     else:
         profile = UserProfile.get(instance.username)
         if profile and not profile.is_confirmed:

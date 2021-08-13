@@ -4,7 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from api.bot import BotNotification
-from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, Contacts
+from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, Contacts, ProjectResponse
 
 
 def update_data(instance, validated_data, fields: list or str):
@@ -109,16 +109,10 @@ class ClientSerializer(serializers.ModelSerializer):
 class ClientShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
-        fields = ['id', 'name', 'company', 'fullname']
-        read_only_fields = ['id', 'fullname']
+        fields = ['id', 'name', 'company', 'full_name']
+        read_only_fields = ['id', 'full_name']
 
-    fullname = serializers.SerializerMethodField('get_full_name')
-
-    def get_full_name(self, client):
-        fullname = client.name
-        if client.company:
-            fullname += f' ({client.company})'
-        return fullname
+    full_name = serializers.CharField()
 
     def create(self, validated_data):
         return Client.objects.get_or_create(**validated_data)[0]
@@ -192,6 +186,17 @@ class CalendarDaySerializer(serializers.ModelSerializer):
         pass
 
 
+class ProjectResponseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectResponse
+        exclude = ['id', 'project']
+
+    user = serializers.SerializerMethodField('get_user')
+
+    def get_user(self, obj):
+        return ProfileShortSerializer(obj.user).data
+
+
 class RecursiveField(serializers.Serializer):
     def to_representation(self, value):
         serializer = self.parent.parent.__class__(value, context=self.context)
@@ -201,7 +206,7 @@ class RecursiveField(serializers.Serializer):
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        read_only_fields = ['id', 'date_start', 'date_end', 'parent_name', 'is_folder', 'children', 'creator_info', 'user_info']
+        read_only_fields = ['id', 'date_start', 'date_end', 'is_folder', 'children', 'creator_info', 'user_info']
         fields = '__all__'
 
     days = ProjectDaySerializer(many=True, allow_null=True, default=None)
@@ -212,9 +217,9 @@ class ProjectSerializer(serializers.ModelSerializer):
     creator = serializers.CharField(allow_null=True)
     canceled = serializers.CharField(allow_null=True,  default=None)
     children = RecursiveField(many=True, allow_null=True, read_only=True)
-    parent_name = serializers.SerializerMethodField('get_parent_name', allow_null=True)
     is_folder = serializers.BooleanField(read_only=True)
     parent = serializers.SerializerMethodField('get_parent', allow_null=True)
+    responses = ProjectResponseSerializer(allow_null=True, many=True)
 
     def get_creator_info(self, obj):
         if not obj.creator:
@@ -225,11 +230,6 @@ class ProjectSerializer(serializers.ModelSerializer):
         if not obj.creator:
             return None
         return ProfileShortSerializer(obj.user).data
-
-    def get_parent_name(self, obj):
-        if not obj.parent:
-            return None
-        return obj.parent.title
 
     def get_parent(self, obj):
         if not obj.parent:
@@ -253,7 +253,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         if parent:
             parent.children.add(project)
             parent.parent_days_set()
-        if project.user != project.creator:
+        if project.user and project.user != project.creator:
             BotNotification.create_project(project)
         return project
 
@@ -287,7 +287,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         if instance.user != instance.creator:
             if instance.confirmed:
                 BotNotification.accept_project(instance)
-            else:
+            elif instance.user:
                 BotNotification.update_project(instance)
         return instance
 
@@ -315,48 +315,40 @@ class ProjectSerializer(serializers.ModelSerializer):
         return parent
 
 
-class ProjectChildSerializer(ProjectSerializer):
-    pass
+class ProfileListItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['full_name', 'username']
 
 
-class UserPageSerializer(serializers.Serializer):
-
-    def to_representation(self, obj):
-        ret = super().to_representation(obj)
-        ret['token'] = obj.token()
-        ret['user'] = {
-            'user': ProfileSelfSerializer(obj).data,
-            'projects': ProjectSerializer(obj.get_actual_projects(obj), many=True).data
-        }
-        return ret
-
-
-class ProjectsListItemSerializer(serializers.ModelSerializer):
+class ProjectListItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ['id', 'title', 'client', 'creator', 'money', 'info', 'dates', 'children']
+        fields = ['id', 'title', 'client', 'creator', 'user', 'money', 'info', 'dates', 'parent', 'children', 'is_wait', 'is_paid', 'canceled', 'confirmed',  'date_start', 'date_end', 'dates']
 
-    client = ClientShortSerializer()
-    creator = ProfileShortSerializer()
+    client = serializers.SerializerMethodField('get_client')
+    creator = ProfileListItemSerializer()
+    user = ProfileListItemSerializer()
+    canceled = ProfileListItemSerializer()
     dates = serializers.SerializerMethodField('get_dates')
-    title = serializers.SerializerMethodField('get_title')
+    parent = serializers.SerializerMethodField('get_parent', allow_null=True)
     children = RecursiveField(many=True, allow_null=True, read_only=True)
+
+    def get_parent(self, obj):
+        if not obj.parent:
+            return None
+        return {'id': obj.parent.id, 'title': obj.parent.title}
+
+    def get_client(self, obj):
+        if obj.client:
+            return {
+                'name': obj.client.name,
+                'full_name': obj.client.full_name
+            }
+        return None
 
     def get_dates(self, obj):
         return [i.date for i in obj.days.all()]
-
-    def get_title(self, obj):
-        def title_from_date():
-            date_title = datetime.datetime.strftime(obj.date_start, '%d-%m-%Y')
-            if obj.date_end != obj.date_start:
-                date_title += ' - ' + datetime.datetime.strftime(obj.date_end, '%d-%m-%Y')
-            return date_title
-        title = obj.title
-        if not title:
-            title = title_from_date()
-        if obj.parent and obj.parent.title:
-            title = obj.parent.title + ' / ' + title
-        return title
 
     def to_representation(self, instance):
         result = super().to_representation(instance)
