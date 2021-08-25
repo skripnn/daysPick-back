@@ -12,10 +12,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.bot import BotNotification
-from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag, ProjectResponse
+from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag, ProjectResponse, Account
 from api.serializers import ProjectSerializer, ProfileSerializer, \
     ClientShortSerializer, ProfileSelfSerializer, ClientSerializer, TagSerializer, \
-    ProjectListItemSerializer, ProfileShortSerializer, ContactsSerializer
+    ProjectListItemSerializer, ProfileShortSerializer, ContactsSerializer, AccountSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -51,11 +51,18 @@ class LoginView(APIView):
         username = request.data.get("username").lower()
         password = request.data.get("password")
         user = authenticate(username=username, password=password)
-        profile = UserProfile.get(user)
-        if profile:
-            if profile.is_confirmed:
-                return Response(ProfileSerializer(profile).page(asker=profile, token=True))
-            return Response({'error': 'Аккаунт не подтверждён'})
+        if user:
+            account = user.account
+            return Response({
+                'token': account.token(),
+                'account': AccountSerializer(account).data
+            })
+        # profile = UserProfile.get(user)
+        # if profile:
+        #     profile.page(profile, True)
+            # if profile.is_confirmed:
+            #     return Response(ProfileSerializer(profile).page(asker=profile, token=True))
+            # return Response({'error': 'Аккаунт не подтверждён'})
         return Response({"error": "Неверное имя пользователя или пароль"})
 
 
@@ -125,7 +132,7 @@ class SignupView(APIView):
             error = 'Пароли не совпадают'
         if error:
             return Response({'error': error})
-        UserProfile.create(**request.data)
+        Account.create(**request.data)
         return Response({})
 
     def validate(self, **kwargs):
@@ -143,10 +150,10 @@ class SignupView(APIView):
             elif User.objects.filter(username=username).count() != 0:
                 error = 'Имя пользователя занято'
         if email:
-            if UserProfile.objects.filter(email_confirm=email).count() != 0:
+            if Account.objects.filter(email_confirm=email).count() != 0:
                 error = 'Пользователь с таким e-mail уже зарегистрирован'
         if phone:
-            if UserProfile.objects.filter(phone_confirm=phone).count() != 0:
+            if Account.objects.filter(phone_confirm=phone).count() != 0:
                 error = 'Пользователь с таким телефоном уже зарегистрирован'
         return error
 
@@ -166,9 +173,9 @@ class UserView(APIView):
 
     def get(self, request, username=None):
         profile = UserProfile.get(username)
-        asker = UserProfile.get(request.user)
+        asker = UserProfile.get(request)
         if not profile:
-            return Response(status=404)
+            return Response({'error': f'Пользователь {username} не найден'})
         if request.GET.get('projects'):
             return Response(ProjectListItemSerializer(profile.get_actual_projects(asker), many=True).data)
         if request.GET.get('offers'):
@@ -176,47 +183,47 @@ class UserView(APIView):
         if request.GET.get('profile'):
             if request.GET['profile'] == 'short':
                 return Response(ProfileShortSerializer(profile).data)
-            elif asker == profile:
-                return Response(ProfileSelfSerializer(profile).data)
             return Response(ProfileSerializer(profile).data)
         return Response(profile.page(asker))
 
-    def delete(self, request, username=None):
-        profile = UserProfile.get(request.user)
-        if profile:
-            profile.delete()
-            return Response({'status': 'ok'})
-        return Response({'error': 'Пользователь не найден'})
+    # def delete(self, request, username=None):
+    #     profile = UserProfile.get(request)
+    #     if profile:
+    #         profile.delete()
+    #         return Response({'status': 'ok'})
+    #     return Response({'error': 'Пользователь не найден'})
 
 
 class RaiseProfileView(APIView):
     def get(self, request):
-        profile = request.user.profile
-        profile.update(raised=timezone.now())
-        return Response(profile.page(profile))
+        profile = UserProfile.get(request)
+        if profile:
+            profile = profile.update(raised=timezone.now())
+            return Response(profile.page(profile))
+        return Response({'error': 'Профиль не найден'})
 
 
 class ProjectView(APIView):
     def get(self, request, pk):
+        asker = UserProfile.get(request)
         if pk is not None:
             project = Project.objects.filter(pk=pk).first()
             if project:
                 if not project.user:
                     return Response(ProjectSerializer(project).data)
-                if any((request.user.profile == project.creator,
-                        request.user.profile == project.user,)) and request.user.profile != project.canceled:
+                if any((asker == project.creator,
+                        asker == project.user,)) and asker != project.canceled:
                     return Response(ProjectSerializer(project).data)
         return Response(status=404)
 
     def post(self, request, pk=None):
+        asker = UserProfile.get(request)
         data = request.data
-        # if not data.get('user'):
-        #     data['user'] = request.user.username
         project = None
         if pk is not None:
             project = Project.objects.get(pk=pk)
             if project.creator != project.user:
-                if request.user.profile == project.creator:
+                if asker == project.creator:
                     data.pop('is_paid')
                     data['confirmed'] = False
                 else:
@@ -230,15 +237,22 @@ class ProjectView(APIView):
         if serializer.is_valid(raise_exception=False):
             serializer.save()
             return Response(serializer.data)
-        print(serializer.errors)
+        else:
+            print(serializer.errors)
+            try:
+                project.update(**data)
+                return Response(ProjectSerializer(project).data)
+            except Exception as e:
+                print(e)
         return Response(status=500)
 
     def delete(self, request, pk):
+        asker = UserProfile.get(request)
         project = Project.objects.get(pk=pk)
         if project.parent:
             project.parent.child_delete(project)
         if project.creator != project.user and not project.canceled:
-            project.canceled = request.user.profile
+            project.canceled = asker
             project.confirmed = True
             project.is_wait = True
             project.save()
@@ -254,7 +268,8 @@ class ProjectView(APIView):
 
 class ClientsView(ListView):
     def search(self, request, data):
-        return list_paginator(request.user.profile.clients, data, ClientShortSerializer)
+        profile = UserProfile.get(request)
+        return list_paginator(profile.clients, data, ClientShortSerializer)
 
 
 class ClientView(APIView):
@@ -263,12 +278,13 @@ class ClientView(APIView):
         return Response(ClientSerializer(client).data)
 
     def post(self, request, pk=None):
+        profile = UserProfile.get(request)
         client = None
         if pk is not None:
             client = Client.objects.get(id=pk)
         serializer = ClientShortSerializer(client, data=request.data)
         if serializer.is_valid(raise_exception=True):
-            serializer.save(user=request.user.profile)
+            serializer.save(user=profile)
             return Response(serializer.data)
         return Response(status=500)
 
@@ -280,7 +296,8 @@ class ClientView(APIView):
 class DaysOffView(APIView):
 
     def post(self, request):
-        dop = request.user.profile.days_off_project
+        profile = UserProfile.get(request)
+        dop = profile.days_off_project
         pick = request.data.get('pick')
         days = request.data.get('days', [])
         dates = [datetime.strptime(day, date_format).date() for day in days]
@@ -305,7 +322,7 @@ class CalendarView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        asker = UserProfile.get(request.user)
+        asker = UserProfile.get(request)
         start, end = request.GET.get('start'), request.GET.get('end')
         if start:
             start = datetime.strptime(start, date_format).date()
@@ -330,14 +347,15 @@ class CalendarView(APIView):
 
 class TestView(ListView):
     def search(self, request, data):
-        projects = request.user.profile.projects().without_children()
+        profile = UserProfile.get(request)
+        projects = profile.projects().without_children()
         # return list_paginator(projects, {}, ProjectsListItemSerializer)
 
 
 class ProjectsView(ListView):
     def search(self, request, data):
         user = UserProfile.get(data.get('user'))
-        asker = UserProfile.get(request.user)
+        asker = UserProfile.get(request)
         if not user:
             if data.get('open'):
                 projects = Project.objects.filter(user__isnull=True)
@@ -353,53 +371,82 @@ class ProjectsView(ListView):
 
 class OffersView(ListView):
     def search(self, request, data):
-        user = UserProfile.get(request.user)
+        user = UserProfile.get(request)
         projects = user.offers()
         return list_paginator(projects, data, ProjectListItemSerializer)
 
 
 class UserProfileView(APIView):
     def post(self, request):
-        profile = request.user.profile.update(**request.data)
-        return Response(ProfileSelfSerializer(profile).data)
+        profile = UserProfile.get(request)
+        if profile:
+            profile = profile.update(**request.data)
+            return Response(ProfileSelfSerializer(profile).data)
+        return Response({'error': 'Профиль не найден'})
+
+
+class AccountView(APIView):
+    def get(self, request):
+        account = request.user.account
+        return Response(AccountSerializer(account).data)
+
+    def post(self, request):
+        account = request.user.account.update(**request.data)
+        return Response(AccountSerializer(account).data)
+
+    def delete(self, request):
+        account = request.user.account
+        if account:
+            account.delete()
+            return Response({'status': 'ok'})
+        return Response({'error': 'Пользователь не найден'})
 
 
 class ContactsView(APIView):
     def post(self, request):
-        contacts = request.user.profile.contacts.update(**request.data)
-        return Response(ContactsSerializer(contacts).data)
+        profile = UserProfile.get(request)
+        if profile:
+            contacts = profile.contacts.update(**request.data)
+            return Response(ContactsSerializer(contacts).data)
+        return Response({'error': 'Профиль не найден'})
 
 
 class ImgView(APIView):
     def post(self, request):
-        profile = request.user.profile.update(**request.FILES)
-        return Response(ProfileSelfSerializer(profile).data)
+        profile = UserProfile.get(request)
+        if profile:
+            profile = profile.update(**request.FILES)
+            return Response(ProfileSelfSerializer(profile).data)
+        return Response({'error': 'Профиль не найден'})
 
 
 class TagsView(APIView):
     def get(self, request):
-        tags = Tag.search(profile=request.user.profile, **request.GET)
+        profile = UserProfile.get(request)
+        tags = Tag.search(profile=profile, **request.GET)
         serializer = TagSerializer(tags, many=True)
         return Response(serializer.data)
 
     def post(self, request):
-        tags = request.user.profile.tags.update(request.data)
+        profile = UserProfile.get(request)
+        tags = profile.tags.update(request.data)
         serializer = TagSerializer(tags, many=True)
         return Response(serializer.data)
 
     def put(self, request):
+        profile = UserProfile.get(request)
         tag, created = Tag.objects.get_or_create(**request.data)
-        count = request.user.profile.tags.count()
-        request.user.profile.tags.add(
+        count = profile.tags.count()
+        profile.tags.add(
             ProfileTag.objects.create(tag=tag, rank=count)
         )
-        serializer = TagSerializer(request.user.profile.tags.list(), many=True)
+        serializer = TagSerializer(profile.tags.list(), many=True)
         return Response(serializer.data)
 
 
 class ProjectsStatisticsView(APIView):
     def post(self, request):
-        profile = request.user.profile
+        profile = UserProfile.get(request)
 
         if request.data:
             projects = profile.projects().search(**request.data)
@@ -421,5 +468,6 @@ class ProjectsStatisticsView(APIView):
 
 class ProjectResponseView(APIView):
     def post(self, request, pk):
-        ProjectResponse.objects.get_or_create(project_id=pk, user=request.user.profile, **request.data)
+        profile = UserProfile.get(request)
+        ProjectResponse.objects.get_or_create(project_id=pk, user=profile, **request.data)
         return Response(status=200)

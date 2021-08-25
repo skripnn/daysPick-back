@@ -7,8 +7,8 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         from api.models import UserProfile, Project, Day
         for profile in UserProfile.objects.all():
-            print(f'user {profile.user}:')
-            dof, created = Project.objects.get_or_create(user=profile.user, creator__isnull=True)
+            print(f'user {profile.account}:')
+            dof, created = Project.objects.get_or_create(user=profile.account, creator__isnull=True)
             print(f'Days off project was {"created" if created else "founded"}')
             days = []
             for date in profile.days_off:

@@ -8,7 +8,7 @@ class Command(BaseCommand):
         from api.models import Project, Client
 
         def profile(i):
-            i.profile = i.user.profile
+            i.profile = i.account.profile
             i.save()
             print(f'{i} - ok')
 

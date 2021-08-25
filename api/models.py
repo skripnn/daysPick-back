@@ -138,52 +138,161 @@ class Contacts(models.Model):
         return self
 
 
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='profile', null=True)
-    first_name = models.CharField(max_length=64, **null)
-    last_name = models.CharField(max_length=64, **null)
+class Account(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='account', primary_key=True)
     email = models.EmailField(**null)
     email_confirm = models.EmailField(**null, unique=True)
     phone = models.CharField(max_length=32, **null)
     phone_confirm = models.CharField(max_length=32, **null, unique=True)
     telegram_chat_id = models.IntegerField(**null, unique=True)
-    facebook_account = models.OneToOneField('FacebookAccount', on_delete=models.SET_NULL, **null, related_name='profile')
+    facebook_account = models.OneToOneField('FacebookAccount', on_delete=models.SET_NULL, **null, related_name='account')
     is_public = models.BooleanField(default=False)
-    show_email = models.BooleanField(default=True)
-    show_phone = models.BooleanField(default=True)
-    avatar = models.ImageField(upload_to='avatars', **null)
-    photo = models.ImageField(upload_to='photos', **null)
     raised = models.DateTimeField(default=timezone.now)
-    info = models.TextField(**null)
-
-    def delete(self, using=None, keep_parents=False):
-        fields = self._meta.fields
-        for f in fields:
-            if f.null:
-                if f.one_to_one:
-                    related_field = getattr(self, f.name)
-                    if related_field:
-                        related_field.delete()
-                setattr(self, f.name, None)
-            elif f.has_default():
-                if callable(f.default):
-                    default = f.default()
-                else:
-                    default = f.default
-                setattr(self, f.name, default)
-        self.tags.all().delete()
-        self.clients.all().delete()
-        self.all_projects.filter(creator=self, user=self).delete()
-        self.days_off_project.delete()
-        self.save()
 
     @property
-    def is_deleted(self):
-        return not bool(self.user)
+    def username(self):
+        if not self.user:
+            return None
+        return self.user.username
 
     @property
     def is_confirmed(self):
         return bool(self.email_confirm or self.phone_confirm)
+
+    def token(self):
+        from rest_framework.authtoken.models import Token
+        token, created = Token.objects.get_or_create(user=self.user)
+        return token.key
+
+    @classmethod
+    def create(cls, **data):
+        username = data.pop('username', f'u{uuid.uuid4().hex[:16]}')
+        password = data.pop('password', uuid.uuid4().hex)
+        password2 = data.pop('password2', None)
+        phone = data.pop('phone', None)
+        email = data.pop('email', None)
+        user = User.objects.create_user(username=username, password=password)
+        account = cls.objects.create(user=user, phone=phone, email=email)
+        profile = UserProfile.objects.create(account=account, **data)
+        if profile and profile.email:
+            profile.send_confirmation_email()
+        return account
+
+    def update(self, **data):
+        for key, value in data.items():
+            if key == 'username' and value:
+                self.user.username = value
+                self.user.save()
+                continue
+            if key == 'password' and value:
+                self.user.set_password(value)
+                self.user.save()
+                continue
+            if key == 'facebook_account' and value:
+                from api.serializers import FacebookAccountSerializer
+                fb = FacebookAccountSerializer(data=value)
+                if fb.is_valid():
+                    fb.save()
+                    value = fb.instance
+                    fb_profile = getattr(fb.instance, 'profile', None)
+                    if fb_profile and fb_profile != self:
+                        fb.instance.profile.update(facebook_account=None)
+                else:
+                    continue
+            if key in ['avatar', 'photo'] and value:
+                if isinstance(value, list):
+                    value = value[0]
+                import uuid
+                ext = value.content_type.split('/')[-1]
+                filename = uuid.uuid4().hex
+                value.name = f'{filename}.{ext}'
+            setattr(self, key, value)
+            if key == 'email' and value:
+                self.send_confirmation_email()
+        return self
+
+    def send_confirmation_email(self):
+        code = hash(self.email)
+        print('send', self.email, code)
+        letter = {
+            'theme': 'DaysPick e-mail confirmation',
+            'body': f'Confirm your account {self.username} on link: http://dayspick.ru/confirm/?user={self.username}&code={code}',
+            'from': 'DaysPick <registration@dayspick.ru>',
+            'to': [self.email]
+        }
+        print(f'http://dayspick.ru/confirm/?user={self.username}&code={code}')
+        try:
+            from django.core.mail import send_mail
+            send_mail(letter['theme'],
+                      letter['body'],
+                      letter['from'],
+                      letter['to'])
+        except Exception as e:
+            print(f'SEND MAIL ERROR: {e}')
+
+    def confirm_email(self, code):
+        hash_code = hash(self.email)
+        print('confirm', self.email, hash_code)
+        if str(hash_code) == code:
+            self.update(email_confirm=self.email, email=None)
+            return True
+        return False
+
+    def __str__(self):
+        return self.username
+
+    def __repr__(self):
+        return self.username
+
+
+class UserProfile(models.Model):
+    # user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='profile', null=True)
+    account = models.OneToOneField(Account, on_delete=models.SET_NULL, related_name='profile', null=True)
+    first_name = models.CharField(max_length=64, **null)
+    last_name = models.CharField(max_length=64, **null)
+    email = models.EmailField(**null)
+    # email_confirm = models.EmailField(**null, unique=True)
+    phone = models.CharField(max_length=32, **null)
+    telegram = models.CharField(max_length=32, **null)
+    # phone_confirm = models.CharField(max_length=32, **null, unique=True)
+    # telegram_chat_id = models.IntegerField(**null, unique=True)
+    # facebook_account = models.OneToOneField('FacebookAccount', on_delete=models.SET_NULL, **null, related_name='profile')
+    # is_public = models.BooleanField(default=False)
+    # show_email = models.BooleanField(default=True)
+    # show_phone = models.BooleanField(default=True)
+    avatar = models.ImageField(upload_to='avatars', **null)
+    photo = models.ImageField(upload_to='photos', **null)
+    # raised = models.DateTimeField(default=timezone.now)
+    info = models.TextField(**null)
+
+    # def delete(self, using=None, keep_parents=False):
+    #     fields = self._meta.fields
+    #     for f in fields:
+    #         if f.null:
+    #             if f.one_to_one:
+    #                 related_field = getattr(self, f.name)
+    #                 if related_field:
+    #                     related_field.delete()
+    #             setattr(self, f.name, None)
+    #         elif f.has_default():
+    #             if callable(f.default):
+    #                 default = f.default()
+    #             else:
+    #                 default = f.default
+    #             setattr(self, f.name, default)
+    #     self.tags.all().delete()
+    #     self.clients.all().delete()
+    #     self.all_projects.filter(creator=self, user=self).delete()
+    #     self.days_off_project.delete()
+    #     self.save()
+
+    @property
+    def is_deleted(self):
+        return not bool(self.account)
+
+    # @property
+    # def is_confirmed(self):
+    #     return bool(self.email_confirm or self.phone_confirm)
 
     @property
     def full_name(self):
@@ -196,9 +305,9 @@ class UserProfile(models.Model):
 
     @property
     def username(self):
-        if not self.user:
+        if not self.account:
             return '<DELETED>'
-        return self.user.username
+        return self.account.username
 
     def projects(self, asker=None):
         if not asker:
@@ -238,19 +347,23 @@ class UserProfile(models.Model):
     def get(cls, username, alt=None):
         if not username:
             return alt
+        from rest_framework.request import Request
+        if isinstance(username, Request):
+            username = username.user
         if isinstance(username, User):
-            return cls.objects.filter(user=username).first() or alt
+            return username.account.profile
+            # return cls.objects.filter(account__user=username).first() or alt
         if isinstance(username, cls):
             return username
-        if isinstance(username, str):
-            if re.match('^79[0-9]{9}$', username):
-                phone = username
-                return cls.objects.filter(phone_confirm=phone).first() or alt
-        return cls.objects.exclude(user__isnull=True).filter(user__username=username).first() or alt
+        # if isinstance(username, str):
+        #     if re.match('^79[0-9]{9}$', username):
+        #         phone = username
+        #         return cls.objects.filter(phone_confirm=phone).first() or alt
+        return cls.objects.exclude(account__isnull=True).filter(account__user__username=username).first() or alt
 
     @classmethod
     def search(cls, **kwargs):
-        users = cls.objects.exclude(is_public=False).order_by('-raised')
+        users = cls.objects.exclude(account__isnull=True).exclude(account__is_public=False).order_by('-account__raised')
         if kwargs.get('filter'):
             search = kwargs['filter']
             if isinstance(search, list):
@@ -258,48 +371,51 @@ class UserProfile(models.Model):
             words = search.split(' ')
             if len(words) == 1 and not words[0]:
                 return []
-            spelled = YandexSpeller().spelled(search)
+            try:
+                spelled = YandexSpeller().spelled(search)
+            except:
+                spelled = search
             options = [option for option in spelled.split(' ') if len(option) > 1]
             digits = ''.join(re.findall('[0-9]', search))
             phone_templates = [match.group(1) for match in re.finditer(r'(?=(\d{9}))', digits)] or ['-']
 
             phone_endswith = users.filter(
-                reduce(lambda q, value: q | Q(phone_confirm__endswith=value), phone_templates, Q())
+                reduce(lambda q, value: q | Q(account__phone_confirm__endswith=value), phone_templates, Q())
             )
 
             phone_contains = users.filter(
-                reduce(lambda q, value: q | Q(phone_confirm__icontains=value), phone_templates, Q())
+                reduce(lambda q, value: q | Q(account__phone_confirm__icontains=value), phone_templates, Q())
             )
 
             name_exact = users.filter(
-                Q(user__username__iexact=search) |
+                Q(account__user__username__iexact=search) |
                 Q(first_name__iexact=search) |
                 Q(last_name__iexact=search) |
-                Q(user__username__iexact=spelled) |
+                Q(account__user__username__iexact=spelled) |
                 Q(first_name__iexact=spelled) |
                 Q(last_name__iexact=spelled)
             )
 
             name_words = users.filter(
-                Q(user__username__search=search) |
+                Q(account__user__username__search=search) |
                 Q(first_name__search=search) |
                 Q(last_name__search=search) |
-                Q(user__username__search=spelled) |
+                Q(account__user__username__search=spelled) |
                 Q(first_name__search=spelled) |
                 Q(last_name__search=spelled)
             )
 
             name_contains = users.filter(
-                Q(user__username__icontains=search) |
+                Q(account__user__username__icontains=search) |
                 Q(first_name__icontains=search) |
                 Q(last_name__icontains=search) |
-                Q(user__username__in=words) |
+                Q(account__user__username__in=words) |
                 Q(first_name__in=words) |
                 Q(last_name__in=words) |
-                Q(user__username__icontains=spelled) |
+                Q(account__user__username__icontains=spelled) |
                 Q(first_name__icontains=spelled) |
                 Q(last_name__icontains=spelled) |
-                Q(user__username__in=options) |
+                Q(account__user__username__in=options) |
                 Q(first_name__in=options) |
                 Q(last_name__in=options)
             )
@@ -329,11 +445,11 @@ class UserProfile(models.Model):
 
     def token(self):
         from rest_framework.authtoken.models import Token
-        token, created = Token.objects.get_or_create(user=self.user)
+        token, created = Token.objects.get_or_create(user=self.account.user)
         return token.key
 
     def tg_code(self):
-        return int(self.user.date_joined.timestamp()) + self.telegram_chat_id
+        return int(self.account.user.date_joined.timestamp()) + self.account.telegram_chat_id
 
     def get_actual_projects(self, asker):
         if asker == self:
@@ -385,7 +501,7 @@ class UserProfile(models.Model):
         }
 
     def page(self, asker, token=False, additional=None):
-        from api.serializers import ProjectSerializer, ProfileSerializer, ProfileSelfSerializer
+        from api.serializers import ProfileSerializer, ProfileSelfSerializer, AccountSerializer
         if asker == self:
             profile_serializer = ProfileSelfSerializer
         else:
@@ -520,7 +636,6 @@ class ProjectsQuerySet(models.QuerySet):
 
     def actual(self):
         today = timezone.now().date()
-        # return self.without_children().filter(Q(date_end__gte=today) | Q(is_paid=False)).filter(Q(children__isnull=True) | Q(children__is_paid=False)).distinct()
         return self.without_folders().filter(Q(date_end__gte=today) | Q(is_paid=False)).distinct()
 
     def search(self, **kwargs):
@@ -622,7 +737,7 @@ class Project(models.Model):
         return None
 
     def update(self, **data):
-        for key, value in data:
+        for key, value in data.items():
             try:
                 setattr(self, key, value)
             except AttributeError as error:

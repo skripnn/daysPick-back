@@ -3,7 +3,7 @@ import datetime
 from django.contrib import admin
 from django.contrib.auth.models import User
 
-from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount, ProjectResponse
+from api.models import Project, UserProfile, Day, Client, Tag, ProfileTag, FacebookAccount, ProjectResponse, Account
 
 
 class UserProfileInline(admin.StackedInline):
@@ -28,13 +28,13 @@ class UserAdmin(admin.ModelAdmin):
     def profile_link(self, obj):
         from django.urls import reverse
         from django.utils.html import format_html
-        url = reverse('admin:api_userprofile_change', args=[obj.profile.id])
-        return format_html("<a href='{}'>{}</a>", url, str(obj.profile))
+        url = reverse('admin:api_userprofile_change', args=[obj.account.profile.id])
+        return format_html("<a href='{}'>{}</a>", url, str(obj.account.profile))
 
     profile_link.admin_order_field = 'profile'
     profile_link.short_description = 'profile'
 
-    inlines = (UserProfileInline,)
+    # inlines = (UserProfileInline,)
     list_display = ('username', 'profile_link', 'is_superuser')
     ordering = ('-is_superuser', 'username')
 
@@ -71,7 +71,7 @@ class TagAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'first_name', 'last_name', 'is_confirmed')
+    list_display = ('account', 'first_name', 'last_name')
     inlines = (TagsInline,)
 
 
@@ -83,3 +83,5 @@ class ProjectResponseAdmin(admin.ModelAdmin):
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(FacebookAccount)
+admin.site.register(ProfileTag)
+admin.site.register(Account)

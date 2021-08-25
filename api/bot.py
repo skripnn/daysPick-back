@@ -101,11 +101,6 @@ def answer(message, profile):
         bot.register_next_step_handler(next_message, answer, profile)
 
 
-def admins_notification(message):
-    for i in admin_ids:
-        bot.send_message(i, message)
-
-
 def error(message):
     keyboard = types.ReplyKeyboardRemove()
     error_message = bot.send_message(message.chat.id, 'Ошибка. Введи имя пользователя:', reply_markup=keyboard)
@@ -122,33 +117,48 @@ def get_link(to, profile):
 
 class BotNotification:
     @classmethod
+    def send_to_admins(cls, message):
+        try:
+            for i in admin_ids:
+                # from .tasks import bot_send_message
+                # bot_send_message.apply_async(i, message)
+                bot.send_message(i, message)
+        except:
+            print("Can't connect to Bot")
+
+    @classmethod
     def send(cls, profile, message, project):
         if profile and profile.telegram_chat_id:
-            button = types.InlineKeyboardButton('Посмотреть', get_link(f'project/{project.id}', profile))
-            keyboard = types.InlineKeyboardMarkup().add(button)
-            bot.send_message(profile.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
+            try:
+                button = types.InlineKeyboardButton('Посмотреть', get_link(f'project/{project.id}', profile))
+                keyboard = types.InlineKeyboardMarkup().add(button)
+                # from .tasks import bot_send_message
+                # bot_send_message(profile.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
+                bot.send_message(profile.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
+            except:
+                print("Can't connect to Bot")
 
     @classmethod
     def create_project(cls, project):
         message = 'Получен запрос на проект'
-        cls.send(project.user, message, project)
+        cls.send(project.account, message, project)
 
     @classmethod
     def accept_project(cls, project):
-        message = f'Проект {project.title} был подтвержден пользователем {project.user.full_name}'
+        message = f'Проект {project.title} был подтвержден пользователем {project.account.full_name}'
         cls.send(project.creator, message, project)
 
     @classmethod
     def decline_project(cls, project):
-        message = f'Пользователь {project.user.full_name} отказался от проекта {project.title}'
+        message = f'Пользователь {project.account.full_name} отказался от проекта {project.title}'
         cls.send(project.creator, message, project)
 
     @classmethod
     def update_project(cls, project):
         message = f'Проект {project.title} был изменен'
-        cls.send(project.user, message, project)
+        cls.send(project.account, message, project)
 
     @classmethod
     def cancel_project(cls, project):
         message = f'Проект {project.title} был отменён'
-        cls.send(project.user, message, project)
+        cls.send(project.account, message, project)

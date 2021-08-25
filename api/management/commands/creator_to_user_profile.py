@@ -9,7 +9,7 @@ class Command(BaseCommand):
 
         def profile(i):
             if i.title:
-                i.creator = i.user
+                i.creator = i.account
                 i.save()
                 print(f'{i} - ok')
 
