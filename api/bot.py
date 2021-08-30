@@ -31,16 +31,16 @@ def start(message, username=None):
 
 
 def validation_username(text):
-    from api.models import UserProfile
-    if isinstance(text, UserProfile):
+    from api.models import Account
+    if isinstance(text, Account):
         return text
     if text.startswith('/start '):
         text = text[7:]
     result = re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', text)
     if result:
         username = result.group(0).lower()
-        username = UserProfile.get(username)
-        return username
+        account = Account.get(username)
+        return account
     return None
 
 
@@ -50,8 +50,8 @@ def telephone(message, username=None):
             start(message)
             return
         username = message.text
-    username = validation_username(username)
-    if not username:
+    account = validation_username(username)
+    if not account:
         start_message = bot.send_message(message.chat.id, 'Невозможное имя пользователя. Введи имя пользователя:')
         bot.register_next_step_handler(start_message, telephone)
         return
@@ -61,29 +61,30 @@ def telephone(message, username=None):
     keyboard.add(send)
     keyboard.add(cancel)
     telephone_message = bot.send_message(message.chat.id, 'Отправь номер для подтверждения', reply_markup=keyboard)
-    bot.register_next_step_handler(telephone_message, answer, username)
+    bot.register_next_step_handler(telephone_message, answer, account)
 
 
-def answer(message, profile):
+def answer(message, account):
     if message.contact:
         if not message.contact.phone_number:
             error(message)
         phone = message.contact.phone_number
         chat_id = message.chat.id
-        if not profile:
+        if not account:
             error(message)
         else:
             keyboard = types.ReplyKeyboardRemove()
-            if profile.phone != phone and profile.phone_confirm != phone:
+            if account.phone != phone and account.phone_confirm != phone:
                 return error(message)
-            if profile.phone == phone:
-                profile = profile.update(phone_confirm=phone, phone=None, telegram_chat_id=chat_id)
-                if not isinstance(profile, UserProfile):
+            if account.phone == phone:
+                account = account.update(phone_confirm=phone, phone=None, telegram_chat_id=chat_id)
+                from api.models import Account
+                if not isinstance(account, Account):
                     error(message)
-                bot.send_message(message.chat.id, f'Номер подтвержден для пользователя {profile}', reply_markup=keyboard)
-            elif profile.phone_confirm == phone:
+                bot.send_message(message.chat.id, f'Номер подтвержден для пользователя {account.username}', reply_markup=keyboard)
+            elif account.phone_confirm == phone:
                 bot.send_message(message.chat.id, f'Номер уже подтвержден', reply_markup=keyboard)
-            button = types.InlineKeyboardButton('Профиль', get_link('profile', profile))
+            button = types.InlineKeyboardButton('Профиль', get_link('profile', account))
             keyboard = types.InlineKeyboardMarkup().add(button)
             bot.send_message(message.chat.id, f'Можешь перейти в профиль', reply_markup=keyboard)
     elif message.text == 'Отмена':
@@ -98,7 +99,7 @@ def answer(message, profile):
         keyboard.add(send)
         keyboard.add(cancel)
         next_message = bot.send_message(message.chat.id, f'Выбери одну из команд дополнительной клавиаутры', reply_markup=keyboard)
-        bot.register_next_step_handler(next_message, answer, profile)
+        bot.register_next_step_handler(next_message, answer, account)
 
 
 def error(message):
@@ -107,8 +108,8 @@ def error(message):
     bot.register_next_step_handler(error_message, telephone)
 
 
-def get_link(to, profile):
-    return f'https://dayspick.ru/tgauth?user={profile.username}&code={profile.tg_code()}&to={to}'
+def get_link(to, account):
+    return f'https://dayspick.ru/tgauth?user={account.username}&code={account.tg_code()}&to={to}'
 
 
 # bot.set_webhook(url="https://091ea319baa5.ngrok.io/bot/" + TELEGRAM_TOKEN)

@@ -6,9 +6,10 @@ from functools import reduce
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models, OperationalError
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Sum
+from django.db.models.functions import Round
 from django.utils import timezone
-from pyaspeller import YandexSpeller
+from pyaspeller.yandex_speller import YandexSpeller
 
 null = {'null': True, 'blank': True}
 
@@ -125,19 +126,6 @@ class ClientsManager(models.Manager):
         return clients
 
 
-class Contacts(models.Model):
-    user = models.OneToOneField('UserProfile', on_delete=models.CASCADE, related_name='contacts')
-    email = models.EmailField(**null)
-    phone = models.CharField(max_length=32, **null)
-    telegram = models.CharField(max_length=32, **null)
-
-    def update(self, **kwargs):
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-        self.save()
-        return self
-
-
 class Account(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='account', primary_key=True)
     email = models.EmailField(**null)
@@ -145,7 +133,8 @@ class Account(models.Model):
     phone = models.CharField(max_length=32, **null)
     phone_confirm = models.CharField(max_length=32, **null, unique=True)
     telegram_chat_id = models.IntegerField(**null, unique=True)
-    facebook_account = models.OneToOneField('FacebookAccount', on_delete=models.SET_NULL, **null, related_name='account')
+    facebook_account = models.OneToOneField('FacebookAccount', on_delete=models.SET_NULL, **null,
+                                            related_name='account')
     is_public = models.BooleanField(default=False)
     raised = models.DateTimeField(default=timezone.now)
 
@@ -165,10 +154,23 @@ class Account(models.Model):
         return token.key
 
     @classmethod
+    def get(cls, username, alt=None):
+        if not username:
+            return alt
+        from rest_framework.request import Request
+        if isinstance(username, Request):
+            username = username.user
+        if isinstance(username, User):
+            return username.account
+        if isinstance(username, cls):
+            return username
+        return cls.objects.filter(user__username=username).first() or alt
+
+    @classmethod
     def create(cls, **data):
         username = data.pop('username', f'u{uuid.uuid4().hex[:16]}')
         password = data.pop('password', uuid.uuid4().hex)
-        password2 = data.pop('password2', None)
+        data.pop('password2', None)
         phone = data.pop('phone', None)
         email = data.pop('email', None)
         user = User.objects.create_user(username=username, password=password)
@@ -209,6 +211,7 @@ class Account(models.Model):
             setattr(self, key, value)
             if key == 'email' and value:
                 self.send_confirmation_email()
+            self.save()
         return self
 
     def send_confirmation_email(self):
@@ -216,11 +219,12 @@ class Account(models.Model):
         print('send', self.email, code)
         letter = {
             'theme': 'DaysPick e-mail confirmation',
-            'body': f'Confirm your account {self.username} on link: http://dayspick.ru/confirm/?user={self.username}&code={code}',
+            'body': f'Для подтверждения аккаунта {self.username} переуди по ссылке: '
+                    f'https://dayspick.ru/confirm/?user={self.username}&code={code}',
             'from': 'DaysPick <registration@dayspick.ru>',
             'to': [self.email]
         }
-        print(f'http://dayspick.ru/confirm/?user={self.username}&code={code}')
+        print(f'https://dayspick.ru/confirm/?user={self.username}&code={code}')
         try:
             from django.core.mail import send_mail
             send_mail(letter['theme'],
@@ -238,6 +242,9 @@ class Account(models.Model):
             return True
         return False
 
+    def tg_code(self):
+        return int(self.user.date_joined.timestamp()) + self.telegram_chat_id
+
     def __str__(self):
         return self.username
 
@@ -246,53 +253,19 @@ class Account(models.Model):
 
 
 class UserProfile(models.Model):
-    # user = models.OneToOneField(User, on_delete=models.SET_NULL, related_name='profile', null=True)
     account = models.OneToOneField(Account, on_delete=models.SET_NULL, related_name='profile', null=True)
     first_name = models.CharField(max_length=64, **null)
     last_name = models.CharField(max_length=64, **null)
     email = models.EmailField(**null)
-    # email_confirm = models.EmailField(**null, unique=True)
     phone = models.CharField(max_length=32, **null)
     telegram = models.CharField(max_length=32, **null)
-    # phone_confirm = models.CharField(max_length=32, **null, unique=True)
-    # telegram_chat_id = models.IntegerField(**null, unique=True)
-    # facebook_account = models.OneToOneField('FacebookAccount', on_delete=models.SET_NULL, **null, related_name='profile')
-    # is_public = models.BooleanField(default=False)
-    # show_email = models.BooleanField(default=True)
-    # show_phone = models.BooleanField(default=True)
     avatar = models.ImageField(upload_to='avatars', **null)
     photo = models.ImageField(upload_to='photos', **null)
-    # raised = models.DateTimeField(default=timezone.now)
     info = models.TextField(**null)
-
-    # def delete(self, using=None, keep_parents=False):
-    #     fields = self._meta.fields
-    #     for f in fields:
-    #         if f.null:
-    #             if f.one_to_one:
-    #                 related_field = getattr(self, f.name)
-    #                 if related_field:
-    #                     related_field.delete()
-    #             setattr(self, f.name, None)
-    #         elif f.has_default():
-    #             if callable(f.default):
-    #                 default = f.default()
-    #             else:
-    #                 default = f.default
-    #             setattr(self, f.name, default)
-    #     self.tags.all().delete()
-    #     self.clients.all().delete()
-    #     self.all_projects.filter(creator=self, user=self).delete()
-    #     self.days_off_project.delete()
-    #     self.save()
 
     @property
     def is_deleted(self):
         return not bool(self.account)
-
-    # @property
-    # def is_confirmed(self):
-    #     return bool(self.email_confirm or self.phone_confirm)
 
     @property
     def full_name(self):
@@ -322,48 +295,19 @@ class UserProfile(models.Model):
         return self.all_projects.get_or_create(creator__isnull=True)[0]
 
     @classmethod
-    def create(cls, **kwargs):
-        username = kwargs.pop('username', f'u{uuid.uuid4().hex[:16]}')
-        password = kwargs.pop('password', uuid.uuid4().hex)
-        password2 = kwargs.pop('password2', None)
-        from django.db import IntegrityError
-        try:
-            profile = cls.objects.create(user=User.objects.create_user(username=username, password=password), **kwargs)
-            Contacts.objects.create(user=profile)
-            from api.bot import admins_notification
-            admins_notification(f'Новый пользователь зарегистрирован.\nusername: {username}')
-            if profile and profile.email:
-                profile.send_confirmation_email()
-        except IntegrityError as error:
-            user = User.objects.filter(username=username).first()
-            if user:
-                user.delete()
-            m = re.search(r'Key\s\((.+)\)=\((.+)\)', error.args[0])
-            key, value = m.group(1), m.group(2)
-            profile = cls.objects.get(**{f'{key}': value})
-        return profile
-
-    @classmethod
     def get(cls, username, alt=None):
-        if not username:
-            return alt
-        from rest_framework.request import Request
-        if isinstance(username, Request):
-            username = username.user
-        if isinstance(username, User):
-            return username.account.profile
-            # return cls.objects.filter(account__user=username).first() or alt
-        if isinstance(username, cls):
-            return username
-        # if isinstance(username, str):
-        #     if re.match('^79[0-9]{9}$', username):
-        #         phone = username
-        #         return cls.objects.filter(phone_confirm=phone).first() or alt
-        return cls.objects.exclude(account__isnull=True).filter(account__user__username=username).first() or alt
+        account = Account.get(username)
+        if account:
+            return account.profile
+        return alt
 
     @classmethod
     def search(cls, **kwargs):
         users = cls.objects.exclude(account__isnull=True).exclude(account__is_public=False).order_by('-account__raised')
+
+        if not kwargs:
+            return users
+
         if kwargs.get('filter'):
             search = kwargs['filter']
             if isinstance(search, list):
@@ -371,10 +315,7 @@ class UserProfile(models.Model):
             words = search.split(' ')
             if len(words) == 1 and not words[0]:
                 return []
-            try:
-                spelled = YandexSpeller().spelled(search)
-            except:
-                spelled = search
+            spelled = YandexSpeller().spelled(search)
             options = [option for option in spelled.split(' ') if len(option) > 1]
             digits = ''.join(re.findall('[0-9]', search))
             phone_templates = [match.group(1) for match in re.finditer(r'(?=(\d{9}))', digits)] or ['-']
@@ -435,21 +376,18 @@ class UserProfile(models.Model):
                 Q(tags__tag__title__icontains=spelled)
             ).order_by('tags__rank')
 
-            users = name_exact | phone_endswith | tag_exact | name_words | tag_words | name_contains | tag_contains | phone_contains
+            info_contains = users.filter(
+                Q(info__icontains=search) |
+                Q(info__icontains=spelled)
+            ).order_by('tags__rank')
+
+            users = name_exact | phone_endswith | tag_exact | name_words | tag_words | name_contains | tag_contains | info_contains | phone_contains
 
         if kwargs.get('days'):
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
             busy_users = users.filter(all_projects__days__date__in=dates, all_projects__is_wait=False).values('pk')
             users = users.exclude(pk__in=busy_users)
         return users.distinct()
-
-    def token(self):
-        from rest_framework.authtoken.models import Token
-        token, created = Token.objects.get_or_create(user=self.account.user)
-        return token.key
-
-    def tg_code(self):
-        return int(self.account.user.date_joined.timestamp()) + self.account.telegram_chat_id
 
     def get_actual_projects(self, asker):
         if asker == self:
@@ -501,16 +439,12 @@ class UserProfile(models.Model):
         }
 
     def page(self, asker, token=False, additional=None):
-        from api.serializers import ProfileSerializer, ProfileSelfSerializer, AccountSerializer
-        if asker == self:
-            profile_serializer = ProfileSelfSerializer
-        else:
-            profile_serializer = ProfileSerializer
+        from api.serializers import ProfileSerializer
         start_date = datetime.now().date()
         start_date = start_date - timedelta(start_date.weekday() + 15 * 7)
         from api.serializers import ProjectListItemSerializer
         result = {
-            'user': profile_serializer(self).data,
+            'user': ProfileSerializer(self).data,
             'projects': ProjectListItemSerializer(self.get_actual_projects(asker), many=True).data,
             'calendar': self.get_calendar(asker, start_date)
         }
@@ -518,43 +452,21 @@ class UserProfile(models.Model):
             result['offers'] = ProjectListItemSerializer(self.get_actual_offers(), many=True).data
             result['offersCalendar'] = self.get_calendar(start=start_date, offers=True)
         if token:
-            result['token'] = self.token()
+            result['token'] = self.account.token()
         if additional:
             result.update(additional)
         return result
 
     def update(self, **kwargs):
         for key, value in kwargs.items():
-            try:
-                if key == 'facebook_account' and value:
-                    from api.serializers import FacebookAccountSerializer
-                    fb = FacebookAccountSerializer(data=value)
-                    if fb.is_valid():
-                        fb.save()
-                        value = fb.instance
-                        fb_profile = getattr(fb.instance, 'profile', None)
-                        if fb_profile and fb_profile != self:
-                            fb.instance.profile.update(facebook_account=None)
-                    else:
-                        continue
-                if key in ['avatar', 'photo'] and value:
-                    if isinstance(value, list):
-                        value = value[0]
-                    import uuid
-                    ext = value.content_type.split('/')[-1]
-                    filename = uuid.uuid4().hex
-                    value.name = f'{filename}.{ext}'
-                setattr(self, key, value)
-                if key == 'email' and value:
-                    self.send_confirmation_email()
-            except AttributeError as error:
-                print(error)
-                if key == 'username' and value:
-                    self.user.username = value
-                    self.user.save()
-                if key == 'password' and value:
-                    self.user.set_password(value)
-                    self.user.save()
+            if key in ['avatar', 'photo'] and value:
+                if isinstance(value, list):
+                    value = value[0]
+                import uuid
+                ext = value.content_type.split('/')[-1]
+                filename = uuid.uuid4().hex
+                value.name = f'{filename}.{ext}'
+            setattr(self, key, value)
         return self.test_save()
 
     def test_save(self, last_key=None, last_value=None):
@@ -568,33 +480,6 @@ class UserProfile(models.Model):
                 raise OperationalError()
             UserProfile.objects.get(**{f'{key}': value}).update(**{f'{key}': None})
             return self.test_save(key, value)
-
-    def send_confirmation_email(self):
-        code = hash(self.email)
-        print('send', self.email, code)
-        letter = {
-            'theme': 'DaysPick e-mail confirmation',
-            'body': f'Confirm your account {self.username} on link: http://dayspick.ru/confirm/?user={self.username}&code={code}',
-            'from': 'DaysPick <registration@dayspick.ru>',
-            'to': [self.email]
-        }
-        print(f'http://dayspick.ru/confirm/?user={self.username}&code={code}')
-        try:
-            from django.core.mail import send_mail
-            send_mail(letter['theme'],
-                      letter['body'],
-                      letter['from'],
-                      letter['to'])
-        except Exception as e:
-            print(f'SEND MAIL ERROR: {e}')
-
-    def confirm_email(self, code):
-        hash_code = hash(self.email)
-        print('confirm', self.email, hash_code)
-        if str(hash_code) == code:
-            self.update(email_confirm=self.email, email=None)
-            return True
-        return False
 
     def __str__(self):
         return self.username
@@ -625,6 +510,19 @@ class Client(models.Model):
 
 
 class ProjectsQuerySet(models.QuerySet):
+    def get_statistics(self, dates=None):
+        days = Day.objects.filter(project__in=self)
+        if dates:
+            dates = [datetime.strptime(date, '%Y-%m-%d') for date in dates]
+            days = days.filter(date__in=dates)
+
+        result = days.aggregate(
+            sum=Round(Sum('project__money_per_day')),
+            days=Count('date', distinct=True),
+            projects=Count('project', distinct=True))
+
+        return result
+
     def without_children(self):
         return self.filter(parent__isnull=True)
 
@@ -703,9 +601,19 @@ class Project(models.Model):
     is_wait = models.BooleanField(default=False)
     canceled = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, related_name='canceled_projects', **null)
     confirmed = models.BooleanField(default=True)
-    parent = models.ForeignKey('self', **null, on_delete=models.CASCADE, related_name='children')
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, related_name='children', null=True, blank=True)
 
     objects = ProjectsManager()
+
+    def set_days(self, days):
+        self.days.set([Day.objects.get_or_create(project=self, **day)[0] for day in days])
+        Day.objects.filter(project__isnull=True).delete()
+        if self.days.count():
+            self.date_start = self.days.first().date
+            self.date_end = self.days.last().date
+        else:
+            self.date_start = None
+            self.date_end = None
 
     @property
     def dates(self):
@@ -739,26 +647,32 @@ class Project(models.Model):
     def update(self, **data):
         for key, value in data.items():
             try:
-                setattr(self, key, value)
+                if key == 'days':
+                    self.set_days(value)
+                else:
+                    setattr(self, key, value)
             except AttributeError as error:
                 print(error)
             self.save()
 
-    def __str__(self):
+    def get_title(self):
         if not self.creator:
             return '*days_off*'
 
-        title = str(self.title)
+        title = self.title or ''
         if not title:
-            start = str(self.date_start)
-            end = str(self.date_end)
+            start = self.date_start.strftime('%d.%m.%y')
+            end = self.date_end.strftime('%d.%m.%y')
             title = start
             if end != start:
                 title += ' - ' + end
         if self.parent:
-            title = str(self.parent.title) + ' / ' + title
+            title = self.parent.title + ' / ' + title
 
         return title
+
+    def __str__(self):
+        return self.get_title()
 
 
 class Day(models.Model):
@@ -779,7 +693,7 @@ class FacebookAccount(models.Model):
     picture = models.URLField(**null)
 
     def __str__(self):
-        return f'{self.name } ({self.id})'
+        return f'{self.name} ({self.id})'
 
 
 class ProjectResponse(models.Model):

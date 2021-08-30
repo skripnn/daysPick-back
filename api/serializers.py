@@ -4,7 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from api.bot import BotNotification
-from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, Contacts, ProjectResponse, Account
+from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, ProjectResponse, Account
 
 
 def update_data(instance, validated_data, fields: list or str):
@@ -36,12 +36,6 @@ class TagSerializer(serializers.ModelSerializer):
         fields = ['id', 'title']
 
 
-class ContactsSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Contacts
-        exclude = ['id', 'user']
-
-
 class AccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
@@ -49,10 +43,8 @@ class AccountSerializer(serializers.ModelSerializer):
         read_only_fields = ['get_can_be_raised', 'get_is_confirmed']
 
     username = serializers.CharField(read_only=True)
-    # full_name = serializers.CharField(read_only=True)
     facebook_account = FacebookAccountSerializer(allow_null=True)
     is_confirmed = serializers.SerializerMethodField('get_is_confirmed')
-    # contacts = ContactsSerializer()
     can_be_raised = serializers.SerializerMethodField('get_can_be_raised')
 
     def get_can_be_raised(self, instance):
@@ -61,15 +53,6 @@ class AccountSerializer(serializers.ModelSerializer):
 
     def get_is_confirmed(self, instance):
         return instance.is_confirmed
-    #
-    # def to_representation(self, obj):
-    #     ret = super().to_representation(obj)
-    #
-    #     tags = obj.tags.list()
-    #     serializer = TagSerializer(tags, many=True)
-    #     ret['tags'] = serializer.data
-    #
-    #     return ret
 
 
 class ProfileShortSerializer(serializers.ModelSerializer):
@@ -83,13 +66,9 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         exclude = ['id', 'account']
-        # read_only_fields = ['get_can_be_raised', 'get_is_confirmed']
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
-    # facebook_account = FacebookAccountSerializer(allow_null=True)
-    # is_confirmed = serializers.SerializerMethodField('get_is_confirmed')
-    # contacts = ContactsSerializer()
 
     def get_is_confirmed(self, instance):
         return instance.is_confirmed
@@ -111,15 +90,6 @@ class ProfileSerializer(serializers.ModelSerializer):
         if token:
             result['token'] = self.instance.token()
         return result
-
-
-class ProfileSelfSerializer(ProfileSerializer):
-    pass
-    # can_be_raised = serializers.SerializerMethodField('get_can_be_raised')
-    #
-    # def get_can_be_raised(self, instance):
-    #     delta = timezone.now() - instance.raised
-    #     return delta > datetime.timedelta(hours=3)
 
 
 class ClientProjectSerializer(serializers.ModelSerializer):
@@ -256,7 +226,7 @@ class ProjectSerializer(serializers.ModelSerializer):
         return ProfileShortSerializer(obj.creator).data
 
     def get_user_info(self, obj):
-        if not obj.creator:
+        if not obj.user:
             return None
         return ProfileShortSerializer(obj.user).data
 

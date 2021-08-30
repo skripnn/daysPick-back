@@ -14,7 +14,13 @@ services:
     image: redis
     container_name: redis
     ports:
-      - 6379:6379
+      - "6379:6379"
+    command: redis-server --bind redis --appendonly yes
+    volumes:
+      - ./redis_scripts/sysctl.conf:/etc/sysctl.conf
+    sysctls:
+      net.core.somaxconn: "4096"
+
 
   app:
     build: .

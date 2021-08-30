@@ -14,25 +14,15 @@ from rest_framework.views import APIView
 from api.bot import BotNotification
 from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag, ProjectResponse, Account
 from api.serializers import ProjectSerializer, ProfileSerializer, \
-    ClientShortSerializer, ProfileSelfSerializer, ClientSerializer, TagSerializer, \
-    ProjectListItemSerializer, ProfileShortSerializer, ContactsSerializer, AccountSerializer
+    ClientShortSerializer, ClientSerializer, TagSerializer, \
+    ProjectListItemSerializer, ProfileShortSerializer, AccountSerializer
 
 date_format = '%Y-%m-%d'
 
 
-def list_paginator(_class, data, serializer):
-    page = int(data.get('page', 0))
-    items = _class.search(**data)
-    paginator = Paginator(items, 15)
-    pages = paginator.num_pages
-    result = paginator.page(page + 1).object_list
-    return Response({
-        'list': serializer(result, many=True).data,
-        'pages': pages
-    })
-
-
 class ListView(APIView, metaclass=ABCMeta):
+    serializer = ...
+
     def get(self, request):
         return self.search(request, request.GET)
 
@@ -42,6 +32,17 @@ class ListView(APIView, metaclass=ABCMeta):
     @abstractmethod
     def search(self, request, data):
         pass
+
+    def get_paginator(self, queryset, data):
+        page = int(data.get('page', 0))
+        items = queryset.search(**data)
+        paginator = Paginator(items, 15)
+        pages = paginator.num_pages
+        result = paginator.page(page + 1).object_list
+        return {
+            'list': self.serializer(result, many=True).data,
+            'pages': pages
+        }
 
 
 class LoginView(APIView):
@@ -57,12 +58,6 @@ class LoginView(APIView):
                 'token': account.token(),
                 'account': AccountSerializer(account).data
             })
-        # profile = UserProfile.get(user)
-        # if profile:
-        #     profile.page(profile, True)
-            # if profile.is_confirmed:
-            #     return Response(ProfileSerializer(profile).page(asker=profile, token=True))
-            # return Response({'error': 'Аккаунт не подтверждён'})
         return Response({"error": "Неверное имя пользователя или пароль"})
 
 
@@ -76,44 +71,44 @@ class TgAuthView(APIView):
 
         if not all((code, user, to)):
             return Response({'error': 'Неверная ссылка'})
-        profile = UserProfile.get(user)
-        if code != profile.tg_code():
+        account = Account.get(user)
+        if code != account.tg_code():
             return Response({'error': 'Ошибка авторизации'})
-        return Response(profile.page(profile, token=True, additional={'to': to}))
+        return Response(account.profile.page(account.profile, token=True, additional={'to': to}))
 
 
 class LoginFacebookView(APIView):
     permission_classes = ()
 
     def post(self, request):
-        profile = UserProfile.objects.filter(facebook_account__id=request.data['id']).first()
-        if not profile and request.data.get('email'):
-            profile = UserProfile.objects.filter(email_confirm=request.data['email']).first()
-            if profile:
-                profile.update(facebook_account=request.data)
-        if not profile:
+        account = Account.objects.filter(facebook_account__id=request.data['id']).first()
+        if not account and request.data.get('email'):
+            account = Account.objects.filter(email_confirm=request.data['email']).first()
+            if account:
+                account.update(facebook_account=request.data)
+        if not account:
             data = {
                 'first_name': request.data.get('first_name'),
                 'last_name': request.data.get('last_name'),
                 'email_confirm': request.data.get('email')
             }
-            profile = UserProfile.create(**data).update(facebook_account=request.data)
-        return Response(profile.page(asker=profile, token=True))
+            account = Account.create(**data).update(facebook_account=request.data)
+        return Response(account.profile.page(asker=account.profile, token=True))
 
 
 class LoginTelegramView(APIView):
     permission_classes = ()
 
     def post(self, request):
-        profile = UserProfile.objects.filter(telegram_chat_id=request.data['id']).first()
-        if not profile:
+        account = Account.objects.filter(telegram_chat_id=request.data['id']).first()
+        if not account:
             data = {
                 'first_name': request.data.get('first_name'),
                 'last_name': request.data.get('last_name'),
                 'telegram_chat_id': int(request.data.get('id'))
             }
-            profile = UserProfile.create(**data).update(telegram_chat_id=data['telegram_chat_id'])
-        return Response(profile.page(asker=profile, token=True))
+            account = Account.create(**data).update(telegram_chat_id=data['telegram_chat_id'])
+        return Response(account.profile.page(asker=account.profile, token=True))
 
 
 class SignupView(APIView):
@@ -163,8 +158,8 @@ class ConfirmView(APIView):
 
     def get(self, request):
         profile = UserProfile.get(request.GET.get('user'))
-        if profile:
-            return Response({'result': profile.confirm_email(request.GET.get('code'))})
+        if profile and profile.account:
+            return Response({'result': profile.account.confirm_email(request.GET.get('code'))})
         return Response({'result': None})
 
 
@@ -185,13 +180,6 @@ class UserView(APIView):
                 return Response(ProfileShortSerializer(profile).data)
             return Response(ProfileSerializer(profile).data)
         return Response(profile.page(asker))
-
-    # def delete(self, request, username=None):
-    #     profile = UserProfile.get(request)
-    #     if profile:
-    #         profile.delete()
-    #         return Response({'status': 'ok'})
-    #     return Response({'error': 'Пользователь не найден'})
 
 
 class RaiseProfileView(APIView):
@@ -267,9 +255,11 @@ class ProjectView(APIView):
 
 
 class ClientsView(ListView):
+    serializer = ClientShortSerializer
+
     def search(self, request, data):
         profile = UserProfile.get(request)
-        return list_paginator(profile.clients, data, ClientShortSerializer)
+        return Response(self.get_paginator(profile.clients, data))
 
 
 class ClientView(APIView):
@@ -311,11 +301,12 @@ class DaysOffView(APIView):
         return Response({})
 
 
-class UsersView(ListView):
+class ProfilesView(ListView):
     permission_classes = ()
+    serializer = ProfileSerializer
 
     def search(self, request, data):
-        return list_paginator(UserProfile, data, ProfileSerializer)
+        return Response(self.get_paginator(UserProfile, data))
 
 
 class CalendarView(APIView):
@@ -345,14 +336,9 @@ class CalendarView(APIView):
         return Response(result)
 
 
-class TestView(ListView):
-    def search(self, request, data):
-        profile = UserProfile.get(request)
-        projects = profile.projects().without_children()
-        # return list_paginator(projects, {}, ProjectsListItemSerializer)
-
-
 class ProjectsView(ListView):
+    serializer = ProjectListItemSerializer
+
     def search(self, request, data):
         user = UserProfile.get(data.get('user'))
         asker = UserProfile.get(request)
@@ -366,14 +352,16 @@ class ProjectsView(ListView):
         else:
             projects = user.projects(asker).filter(creator=asker)
 
-        return list_paginator(projects, data, ProjectListItemSerializer)
+        return Response(self.get_paginator(projects, data))
 
 
 class OffersView(ListView):
+    serializer = ProjectListItemSerializer
+
     def search(self, request, data):
         user = UserProfile.get(request)
         projects = user.offers()
-        return list_paginator(projects, data, ProjectListItemSerializer)
+        return Response(self.get_paginator(projects, data))
 
 
 class UserProfileView(APIView):
@@ -381,7 +369,7 @@ class UserProfileView(APIView):
         profile = UserProfile.get(request)
         if profile:
             profile = profile.update(**request.data)
-            return Response(ProfileSelfSerializer(profile).data)
+            return Response(ProfileSerializer(profile).data)
         return Response({'error': 'Профиль не найден'})
 
 
@@ -402,21 +390,12 @@ class AccountView(APIView):
         return Response({'error': 'Пользователь не найден'})
 
 
-class ContactsView(APIView):
-    def post(self, request):
-        profile = UserProfile.get(request)
-        if profile:
-            contacts = profile.contacts.update(**request.data)
-            return Response(ContactsSerializer(contacts).data)
-        return Response({'error': 'Профиль не найден'})
-
-
 class ImgView(APIView):
     def post(self, request):
         profile = UserProfile.get(request)
         if profile:
             profile = profile.update(**request.FILES)
-            return Response(ProfileSelfSerializer(profile).data)
+            return Response(ProfileSerializer(profile).data)
         return Response({'error': 'Профиль не найден'})
 
 

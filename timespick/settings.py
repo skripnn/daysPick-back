@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-from .keys import TELEGRAM_TOKEN, psql_password, secret_key
+from .keys import TELEGRAM_TOKEN, psql_password, secret_key, EMAIL_HOST_PASSWORD, EMAIL_HOST_USER
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -127,11 +127,11 @@ REST_FRAMEWORK = {
 
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'localhost'
-EMAIL_PORT = 25
-EMAIL_HOST_USER = ''
-EMAIL_HOST_PASSWORD = ''
-EMAIL_USE_TLS = False
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_HOST_USER = EMAIL_HOST_USER
+EMAIL_HOST_PASSWORD = EMAIL_HOST_PASSWORD
+EMAIL_USE_TLS = True
 DEFAULT_FROM_EMAIL = 'DaysPick <robot@dayspick.ru>'
 
 LANGUAGE_CODE = 'en-us'

@@ -15,10 +15,10 @@ Including another URLconf
 """
 from django.urls import path
 
-from api.apiviews import ProjectView, UserView, LoginView, SignupView, DaysOffView, UsersView, \
+from api.apiviews import ProjectView, UserView, LoginView, SignupView, DaysOffView, ProfilesView, \
     ConfirmView, CalendarView, ProjectsView, ClientsView, ClientView, UserProfileView, \
-    TagsView, ImgView, LoginFacebookView, RaiseProfileView, TestView, TgAuthView, LoginTelegramView, OffersView, \
-    ContactsView, ProjectsStatisticsView, ProjectResponseView, AccountView
+    TagsView, ImgView, LoginFacebookView, RaiseProfileView, TgAuthView, LoginTelegramView, OffersView, \
+    ProjectsStatisticsView, ProjectResponseView, AccountView
 
 urlpatterns = [
     path('login/facebook/', LoginFacebookView.as_view()),
@@ -30,12 +30,11 @@ urlpatterns = [
 
     path('confirm/', ConfirmView.as_view()),
 
-    path('users/', UsersView.as_view()),
+    path('users/', ProfilesView.as_view()),
 
     path('profile/tags/', TagsView.as_view()),
     path('profile/img/', ImgView.as_view()),
     path('profile/raise/', RaiseProfileView.as_view()),
-    path('profile/contacts/', ContactsView.as_view()),
     path('profile/', UserProfileView.as_view()),
 
     path('account/', AccountView.as_view()),
@@ -51,12 +50,16 @@ urlpatterns = [
     path('project/<int:pk>/response/', ProjectResponseView.as_view()),
     path('project/<int:pk>/', ProjectView.as_view()),
     path('project/', ProjectView.as_view()),
-    path('test/', TestView.as_view()),
+
+    # path('offers/', OffersView2.as_view()),
+    # path('projects/', ProjectsView2.as_view()),
+    # path('project2/<int:pk>/', ProjectView2.as_view()),
+    # path('project2/', ProjectView2.as_view()),
 
     path('clients/', ClientsView.as_view()),
     path('client/<int:pk>/', ClientView.as_view()),
     path('client/', ClientView.as_view()),
 
     path('@<str:username>/', UserView.as_view()),
-    path('', UsersView.as_view())
+    path('', ProfilesView.as_view())
 ]
