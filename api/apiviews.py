@@ -182,15 +182,6 @@ class UserView(APIView):
         return Response(profile.page(asker))
 
 
-class RaiseProfileView(APIView):
-    def get(self, request):
-        profile = UserProfile.get(request)
-        if profile:
-            profile = profile.update(raised=timezone.now())
-            return Response(profile.page(profile))
-        return Response({'error': 'Профиль не найден'})
-
-
 class ProjectView(APIView):
     def get(self, request, pk):
         asker = UserProfile.get(request)

@@ -1,6 +1,3 @@
-import datetime
-
-from django.utils import timezone
 from rest_framework import serializers
 
 from api.bot import BotNotification
@@ -39,20 +36,12 @@ class TagSerializer(serializers.ModelSerializer):
 class AccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
-        exclude = ['user']
-        read_only_fields = ['get_can_be_raised', 'get_is_confirmed']
+        exclude = ['user', 'raised']
 
     username = serializers.CharField(read_only=True)
     facebook_account = FacebookAccountSerializer(allow_null=True)
-    is_confirmed = serializers.SerializerMethodField('get_is_confirmed')
-    can_be_raised = serializers.SerializerMethodField('get_can_be_raised')
-
-    def get_can_be_raised(self, instance):
-        delta = timezone.now() - instance.raised
-        return delta > datetime.timedelta(hours=3)
-
-    def get_is_confirmed(self, instance):
-        return instance.is_confirmed
+    is_confirmed = serializers.BooleanField(read_only=True)
+    can_be_raised = serializers.BooleanField(read_only=True)
 
 
 class ProfileShortSerializer(serializers.ModelSerializer):

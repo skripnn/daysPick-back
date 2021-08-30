@@ -139,6 +139,11 @@ class Account(models.Model):
     raised = models.DateTimeField(default=timezone.now)
 
     @property
+    def can_be_raised(self):
+        delta = timezone.now() - self.raised
+        return delta > timedelta(hours=3)
+
+    @property
     def username(self):
         if not self.user:
             return None
@@ -182,6 +187,10 @@ class Account(models.Model):
 
     def update(self, **data):
         for key, value in data.items():
+            if key == 'raised':
+                if self.can_be_raised:
+                    self.raised = timezone.now()
+                continue
             if key == 'username' and value:
                 self.user.username = value
                 self.user.save()
@@ -211,7 +220,7 @@ class Account(models.Model):
             setattr(self, key, value)
             if key == 'email' and value:
                 self.send_confirmation_email()
-            self.save()
+        self.save()
         return self
 
     def send_confirmation_email(self):
