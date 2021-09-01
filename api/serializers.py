@@ -58,6 +58,12 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     username = serializers.CharField(read_only=True)
     full_name = serializers.CharField(read_only=True)
+    is_public = serializers.SerializerMethodField('get_is_public', read_only=True)
+
+    def get_is_public(self, instance):
+        if instance.account:
+            return instance.account.is_public
+        return False
 
     def get_is_confirmed(self, instance):
         return instance.is_confirmed
@@ -161,13 +167,24 @@ class ListCalendarDaySerializer(serializers.ListSerializer):
         return days
 
 
+class CalendarDayProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = ['id', 'title', 'is_wait']
+
+    title = serializers.SerializerMethodField('get_title')
+
+    def get_title(self, instance):
+        return instance.get_title()
+
+
 class CalendarDaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Day
         exclude = ['id']
         list_serializer_class = ListCalendarDaySerializer
 
-    project = ProjectShortSerializer()
+    project = CalendarDayProjectSerializer()
 
     def dict(self):
         """this method works only with many=True"""

@@ -198,6 +198,7 @@ class Account(models.Model):
             if key == 'password' and value:
                 self.user.set_password(value)
                 self.user.save()
+                # TODO Здесь надо обновить токен и вернуть новый в ответе
                 continue
             if key == 'facebook_account' and value:
                 from api.serializers import FacebookAccountSerializer
@@ -413,7 +414,7 @@ class UserProfile(models.Model):
         if offers:
             all_days = Day.objects.filter(project__creator=self).exclude(project__user=self)
         else:
-            all_days = Day.objects.filter(project__user=self)
+            all_days = Day.objects.filter(project__user=self).exclude(project__canceled__isnull=False)
         all_days = all_days.exclude(project__canceled=self).exclude(project_id=project_id)
 
         if start and end:
@@ -519,18 +520,6 @@ class Client(models.Model):
 
 
 class ProjectsQuerySet(models.QuerySet):
-    def get_statistics(self, dates=None):
-        days = Day.objects.filter(project__in=self)
-        if dates:
-            dates = [datetime.strptime(date, '%Y-%m-%d') for date in dates]
-            days = days.filter(date__in=dates)
-
-        result = days.aggregate(
-            sum=Round(Sum('project__money_per_day')),
-            days=Count('date', distinct=True),
-            projects=Count('project', distinct=True))
-
-        return result
 
     def without_children(self):
         return self.filter(parent__isnull=True)
@@ -545,14 +534,13 @@ class ProjectsQuerySet(models.QuerySet):
         today = timezone.now().date()
         return self.without_folders().filter(Q(date_end__gte=today) | Q(is_paid=False)).distinct()
 
-    def search(self, **kwargs):
+    def search(self, folders=False, without_folders=False, **kwargs):
         search = kwargs.get('filter')
         days = kwargs.get('days')
-        folders = kwargs.get('folders')
 
         if folders:
             projects = self.folders()
-        elif search or days:
+        elif search or days or without_folders:
             projects = self.without_folders()
         else:
             projects = self.without_children()

@@ -38,7 +38,7 @@ services:
   celery:
     image: app-image
     container_name: celery_worker
-    command: celery -A timespick worker --loglevel=INFO --broker=redis://redis:6379
+    command: ['celery', '-A', 'timespick', 'worker', '--loglevel=INFO', '--broker=redis://redis:6379']
     volumes:
       - .:/code
     depends_on:
