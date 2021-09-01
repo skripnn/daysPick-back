@@ -371,7 +371,10 @@ class AccountView(APIView):
 
     def post(self, request):
         account = request.user.account.update(**request.data)
-        return Response(AccountSerializer(account).data)
+        data = AccountSerializer(account).data
+        if request.data.get('password'):
+            data['token'] = account.token()
+        return Response(data)
 
     def delete(self, request):
         account = request.user.account

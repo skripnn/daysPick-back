@@ -198,7 +198,10 @@ class Account(models.Model):
             if key == 'password' and value:
                 self.user.set_password(value)
                 self.user.save()
-                # TODO Здесь надо обновить токен и вернуть новый в ответе
+                from rest_framework.authtoken.models import Token
+                token = Token.objects.filter(user=self.user).first()
+                if token:
+                    token.delete()
                 continue
             if key == 'facebook_account' and value:
                 from api.serializers import FacebookAccountSerializer
