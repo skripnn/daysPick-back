@@ -141,14 +141,64 @@ class SignupView(APIView):
         return error
 
 
+class RecoveryView(APIView):
+    permission_classes = ()
+
+    def get(self, request):
+        account = Account.get(request.GET.get('user'))
+        code = request.GET.get('code')
+        token = account.token()[6:]
+        if not account or not code or code != token:
+            return Response({'error': 'Неверная ссылка'})
+        return Response({
+            'account': AccountSerializer(account).data,
+            'token': account.token(new=True),
+            'message': 'Доступ восстановлен. Рекомендуем установить новый пароль'
+        })
+
+    def post(self, request):
+        key = request.data.get('type')
+        value = request.data.get('value')
+        chosen = request.data.get('chosen')
+        if key not in ['username', 'email', 'phone'] or not value:
+            return Response({'error': 'Неверные данные'})
+        if key != 'username':
+            field = key + '_confirm'
+        else:
+            field = 'user__' + key
+        data = dict([(field, value)])
+        account = Account.objects.filter(**data).first()
+        if not account:
+            return Response({'error': 'Пользователь не найден'})
+        if key == 'phone' or chosen == 'phone':
+            return Response({'message': 'telegram'})
+        elif key == 'email' or chosen == 'email':
+            account.send_recovery_email()
+            return Response({'message': 'Код восстановления направлен на email'})
+            pass
+        else:
+            if account.phone_confirm and account.email_confirm:
+                return Response({'choice': True, 'message': 'Выбери способ восстановления досутпа:'})
+            if account.phone_confirm:
+                return Response({'message': 'telegram'})
+            if account.email_confirm:
+                account.send_recovery_email()
+                return Response({'message': 'Код восстановления направлен на email'})
+        return Response({'error': 'Непредвиденая ошибка'})
+
+
 class ConfirmView(APIView):
     permission_classes = ()
 
     def get(self, request):
-        profile = UserProfile.get(request.GET.get('user'))
-        if profile and profile.account:
-            return Response({'result': profile.account.confirm_email(request.GET.get('code'))})
-        return Response({'result': None})
+        account = Account.get(request.GET.get('user'))
+        if account and account.confirm_email(request.GET.get('code')):
+            return Response({
+                'account': AccountSerializer(account).data,
+                'token': account.token(),
+                'message': 'Email подтверждён'
+            })
+        return Response({'error': 'Неверная ссылка'})
 
 
 class UserView(APIView):
@@ -359,10 +409,9 @@ class AccountView(APIView):
 
     def post(self, request):
         account = request.user.account.update(**request.data)
-        data = AccountSerializer(account).data
         if request.data.get('password'):
-            data['token'] = account.token()
-        return Response(data)
+            return Response({'token': account.token()})
+        return Response(AccountSerializer(account).data)
 
     def delete(self, request):
         account = request.user.account

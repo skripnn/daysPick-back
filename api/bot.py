@@ -119,35 +119,40 @@ class Phone:
 class Password:
     @staticmethod
     def enter(message, account, message_id):
-        if message.text:
+        if message.text and message.text != '/start':
             new_password = message.text
             bot.delete_message(message.chat.id, message.message_id)
             bot.delete_message(message.chat.id, message_id)
             keyboard = types.ReplyKeyboardRemove()
-            next_message = bot.send_message(message.chat.id, f'Введи новый пароль еще раз', reply_markup=keyboard)
+            next_message = bot.send_message(message.chat.id, f'Введи новый пароль еще раз (для отмены, введи /start):', reply_markup=keyboard)
             bot.register_next_step_handler(next_message, Password.confirmation, account, new_password, next_message.id)
         else:
             bot.send_message(message.chat.id, 'Нажми "Меню", чтобы увидеть команды')
 
     @staticmethod
     def confirmation(message, account, new_password, message_id):
-        confirm_password = message.text
-        bot.delete_message(message.chat.id, message.message_id)
-        bot.delete_message(message.chat.id, message_id)
-        if confirm_password == new_password:
-            account.update(password=new_password)
-            bot.send_message(message.chat.id, 'Пароль успешно изменён')
+        if message.text and message.text != '/start':
+            confirm_password = message.text
+            bot.delete_message(message.chat.id, message.message_id)
+            bot.delete_message(message.chat.id, message_id)
+            if confirm_password == new_password:
+                account.update(password=new_password)
+                bot.send_message(message.chat.id, 'Пароль успешно изменён')
+            else:
+                TelegramBot.error(message, 'Пароли не совпадают')
         else:
-            TelegramBot.error(message, 'Пароли не совпадают')
-
+            bot.send_message(message.chat.id, 'Нажми "Меню", чтобы увидеть команды')
 
 
 @bot.message_handler(commands=['start'])
 @TelegramBot.account
 def start(message, account=None):
     if message.text != '/start':
-        username = message.text[7:]
-        phone(message, username)
+        command = message.text[7:]
+        if command == '_recovery':
+            password(message)
+        else:
+            phone(message, command)
         return
     if account:
         name = account.profile.first_name or account.username
@@ -189,7 +194,7 @@ def password(message, account=None):
     if not account:
         return TelegramBot.error(message, 'Изменение пароля недоступно без подтвержденного номера телефона')
     keyboard = types.ReplyKeyboardRemove()
-    next_message = bot.send_message(message.chat.id, 'Введи новый пароль:', reply_markup=keyboard)
+    next_message = bot.send_message(message.chat.id, 'Введи новый пароль (для отмены, введи /start):', reply_markup=keyboard)
     bot.register_next_step_handler(next_message, Password.enter, account, next_message.id)
 
 

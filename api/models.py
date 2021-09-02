@@ -11,6 +11,8 @@ from django.db.models.functions import Round
 from django.utils import timezone
 from pyaspeller.yandex_speller import YandexSpeller
 
+from api.mail import Mail
+
 null = {'null': True, 'blank': True}
 
 
@@ -153,9 +155,12 @@ class Account(models.Model):
     def is_confirmed(self):
         return bool(self.email_confirm or self.phone_confirm)
 
-    def token(self):
+    def token(self, new=False):
         from rest_framework.authtoken.models import Token
         token, created = Token.objects.get_or_create(user=self.user)
+        if new and not created:
+            token.delete()
+            token = Token.objects.create(user=self.user)
         return token.key
 
     @classmethod
@@ -226,32 +231,34 @@ class Account(models.Model):
         return self
 
     def send_confirmation_email(self):
-        code = hash(self.email)
+        code = self.token(new=True)[6:]
         print('send', self.email, code)
         letter = {
-            'theme': 'DaysPick e-mail confirmation',
-            'body': f'Для подтверждения аккаунта {self.username} переуди по ссылке: '
+            'theme': 'Подтверждение адреса электронной почты',
+            'body': f'Для подтверждения адреса электронной почты для аккаунта {self.username} перейди по ссылке: '
                     f'https://dayspick.ru/confirm/?user={self.username}&code={code}',
-            'from': 'DaysPick <registration@dayspick.ru>',
-            'to': [self.email]
+            'to': self.email
         }
+        Mail.send(**letter)
         print(f'https://dayspick.ru/confirm/?user={self.username}&code={code}')
-        try:
-            from django.core.mail import send_mail
-            send_mail(letter['theme'],
-                      letter['body'],
-                      letter['from'],
-                      letter['to'])
-        except Exception as e:
-            print(f'SEND MAIL ERROR: {e}')
 
     def confirm_email(self, code):
-        hash_code = hash(self.email)
-        print('confirm', self.email, hash_code)
-        if str(hash_code) == code:
+        if code == self.token()[6:]:
             self.update(email_confirm=self.email, email=None)
+            self.token(new=True)
             return True
         return False
+
+    def send_recovery_email(self):
+        code = self.token(new=True)[6:]
+        letter = {
+            'theme': 'Восстановление доступа к аккаунту',
+            'body': f'Для восстановления досутпа к аккаунту {self.username} перейди по ссылке: '
+                    f'https://dayspick.ru/recovery/?user={self.username}&code={code}',
+            'to': self.email_confirm
+        }
+        Mail.send(**letter)
+        print(f'https://dayspick.ru/recovery/?user={self.username}&code={code}&to=settings')
 
     def __str__(self):
         return self.username
