@@ -42,27 +42,46 @@ class Phone:
             bot.send_message(message.chat.id, 'Нажми "Меню", чтобы увидеть команды')
 
     @staticmethod
-    def confirmation(message, account=None):
+    def confirmation(message, account=None, sign_up=False):
         keyboard = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
         send = types.KeyboardButton(text="Отправить номер телефона", request_contact=True)
         cancel = types.KeyboardButton(text="Отмена")
         keyboard.add(send)
         keyboard.add(cancel)
         telephone_message = bot.send_message(message.chat.id, 'Отправь номер для подтверждения', reply_markup=keyboard)
-        bot.register_next_step_handler(telephone_message, Phone.confirmation_answer, account)
+        bot.register_next_step_handler(telephone_message, Phone.confirmation_answer, account, sign_up)
 
     @staticmethod
-    def confirmation_answer(message, account):
+    def confirmation_answer(message, account, sign_up=False):
         if message.contact:
             if not message.contact.phone_number:
                 TelegramBot.error(message)
-            phone = message.contact.phone_number
+            phone_number = message.contact.phone_number
             chat_id = message.chat.id
             if not account:
-                TelegramBot.error(message)
+                if not sign_up:
+                    TelegramBot.error(message)
+                else:
+                    data = {
+                        'first_name': message.contact.first_name,
+                        'last_name': message.contact.last_name,
+                        'phone_confirm': phone_number,
+                        'telegram_chat_id': chat_id
+                    }
+                    from api.models import Account
+                    account = Account.get(message.from_user.username)
+                    if not account:
+                        data['username'] = message.from_user.username
+                    account = Account.create(**data)
+                    if account:
+                        button = types.InlineKeyboardButton('Перейти на сайт', 'https://dayspick.ru/')
+                        keyboard = types.InlineKeyboardMarkup().add(button)
+                        bot.send_message(message.chat.id, f'Аккаунт успешно создан', reply_markup=keyboard)
+                    else:
+                        TelegramBot.error(message)
             else:
                 keyboard = types.ReplyKeyboardRemove()
-                if account.phone != phone and account.phone_confirm != phone:
+                if account.phone != phone_number and account.phone_confirm != phone_number:
                     keyboard = types.ReplyKeyboardRemove()
                     bot.send_message(message.chat.id, f'Ошибка', reply_markup=keyboard)
                     button = types.InlineKeyboardButton('Перейти на сайт', 'https://dayspick.ru/')
@@ -70,17 +89,17 @@ class Phone:
                     bot.send_message(message.chat.id, f'Сначала измени телефон в настройках аккаунта на сайте',
                                      reply_markup=keyboard)
                     return
-                if account.phone == phone:
-                    account = account.update(phone_confirm=phone, phone=None, telegram_chat_id=chat_id)
+                if account.phone == phone_number:
+                    account = account.update(phone_confirm=phone_number, phone=None, telegram_chat_id=chat_id)
                     from api.models import Account
                     if not isinstance(account, Account):
                         TelegramBot.error(message, 'Ошибка 122')
                     bot.send_message(message.chat.id, f'Номер подтвержден', reply_markup=keyboard)
-                elif account.phone_confirm == phone:
+                elif account.phone_confirm == phone_number:
                     bot.send_message(message.chat.id, f'Номер уже подтвержден', reply_markup=keyboard)
-                button = types.InlineKeyboardButton('Профиль', get_link('profile', account))
+                button = types.InlineKeyboardButton('Перейти на сайт', 'https://dayspick.ru/')
                 keyboard = types.InlineKeyboardMarkup().add(button)
-                bot.send_message(message.chat.id, f'Можешь перейти в профиль', reply_markup=keyboard)
+                bot.send_message(message.chat.id, f'Можешь перейти на сайт', reply_markup=keyboard)
         elif message.text == 'Отмена':
             keyboard = types.ReplyKeyboardRemove()
             bot.send_message(message.chat.id, f'Ну, в другой раз', reply_markup=keyboard)
@@ -120,6 +139,7 @@ class Password:
             bot.send_message(message.chat.id, 'Пароль успешно изменён')
         else:
             TelegramBot.error(message, 'Пароли не совпадают')
+
 
 
 @bot.message_handler(commands=['start'])
@@ -173,6 +193,14 @@ def password(message, account=None):
     bot.register_next_step_handler(next_message, Password.enter, account, next_message.id)
 
 
+@bot.message_handler(commands=['signup'])
+@TelegramBot.account
+def signup(message, account=None):
+    if account:
+        return TelegramBot.error(message, f'Ты уже зарегистрирован как {account.username}')
+    Phone.confirmation(message, sign_up=True)
+
+
 def validation_username(text):
     from api.models import Account
     if isinstance(text, Account):
@@ -185,11 +213,7 @@ def validation_username(text):
     return None
 
 
-def get_link(to, account):
-    return f'https://dayspick.ru/tgauth?user={account.username}&code={account.tg_code()}&to={to}'
-
-
-# bot.set_webhook(url="https://a5d5-176-193-135-241.ngrok.io/bot/" + TELEGRAM_TOKEN)
+# bot.set_webhook(url="https://47bb-176-193-135-241.ngrok.io/bot/" + TELEGRAM_TOKEN)
 bot.set_webhook(url="https://dayspick.ru/bot/" + TELEGRAM_TOKEN)
 
 
@@ -206,7 +230,7 @@ class BotNotification:
     def send(cls, profile, message, project):
         if profile and profile.account and profile.account.telegram_chat_id:
             try:
-                button = types.InlineKeyboardButton('Посмотреть', get_link(f'project/{project.id}', profile))
+                button = types.InlineKeyboardButton('Посмотреть', f'https://dayspick.ru/project/{project.id}')
                 keyboard = types.InlineKeyboardMarkup().add(button)
                 bot.send_message(profile.account.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
             except:

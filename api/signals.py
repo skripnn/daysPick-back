@@ -43,9 +43,11 @@ def account_post_save(sender, instance, created, **kwargs):
         from api.bot import BotNotification
         BotNotification.send_to_admins(f'Аккаунт создан.\nusername: {instance.username}')
     if not instance.is_confirmed:
-        pass
         from .tasks import check_user_confirmation
-        check_user_confirmation.apply_async((instance.username, ), countdown=30 * 60)
+        try:
+            check_user_confirmation.apply_async((instance.username, ), countdown=30 * 60)
+        except Exception as e:
+            print(e)
 
 
 @receiver(models.signals.pre_save, sender=Account)
@@ -64,8 +66,10 @@ def account_pre_save(sender, instance, **kwargs):
 
 @receiver(models.signals.pre_delete, sender=Account)
 def account_pre_delete(sender, instance, **kwargs):
-    if instance.profile:
+    try:
         instance.profile.update(photo=None, avatar=None)
+    except:
+        pass
 
 
 @receiver(models.signals.post_delete, sender=Account)

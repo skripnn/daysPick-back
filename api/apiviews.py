@@ -7,7 +7,6 @@ from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Sum, Count
 from django.db.models.functions import Round
-from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -51,6 +50,11 @@ class LoginView(APIView):
     def post(self, request):
         username = request.data.get("username").lower()
         password = request.data.get("password")
+        email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        if re.fullmatch(email_regex, username):
+            account = Account.objects.filter(email_confirm=username).first()
+            if account:
+                username = account.username
         user = authenticate(username=username, password=password)
         if user:
             account = user.account
@@ -59,22 +63,6 @@ class LoginView(APIView):
                 'account': AccountSerializer(account).data
             })
         return Response({"error": "Неверное имя пользователя или пароль"})
-
-
-class TgAuthView(APIView):
-    permission_classes = ()
-
-    def get(self, request):
-        code = int(request.GET.get('code', 0))
-        user = request.GET.get('user')
-        to = request.GET.get('to')
-
-        if not all((code, user, to)):
-            return Response({'error': 'Неверная ссылка'})
-        account = Account.get(user)
-        if code != account.tg_code():
-            return Response({'error': 'Ошибка авторизации'})
-        return Response(account.profile.page(account.profile, token=True, additional={'to': to}))
 
 
 class LoginFacebookView(APIView):
@@ -107,7 +95,7 @@ class LoginTelegramView(APIView):
                 'last_name': request.data.get('last_name'),
                 'telegram_chat_id': int(request.data.get('id'))
             }
-            account = Account.create(**data).update(telegram_chat_id=data['telegram_chat_id'])
+            account = Account.create(**data)
         return Response(account.profile.page(asker=account.profile, token=True))
 
 

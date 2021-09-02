@@ -17,14 +17,13 @@ from django.urls import path
 
 from api.apiviews import ProjectView, UserView, LoginView, SignupView, DaysOffView, ProfilesView, \
     ConfirmView, CalendarView, ProjectsView, ClientsView, ClientView, UserProfileView, \
-    TagsView, ImgView, LoginFacebookView, TgAuthView, LoginTelegramView, OffersView, \
+    TagsView, ImgView, LoginFacebookView, LoginTelegramView, OffersView, \
     ProjectsStatisticsView, ProjectResponseView, AccountView
 
 urlpatterns = [
     path('login/facebook/', LoginFacebookView.as_view()),
     path('login/telegram/', LoginTelegramView.as_view()),
     path('login/', LoginView.as_view()),
-    path('tgauth/', TgAuthView.as_view()),
 
     path('signup/', SignupView.as_view()),
 

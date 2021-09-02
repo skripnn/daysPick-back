@@ -176,13 +176,11 @@ class Account(models.Model):
         username = data.pop('username', f'u{uuid.uuid4().hex[:16]}')
         password = data.pop('password', uuid.uuid4().hex)
         data.pop('password2', None)
-        phone = data.pop('phone', None)
-        email = data.pop('email', None)
         user = User.objects.create_user(username=username, password=password)
-        account = cls.objects.create(user=user, phone=phone, email=email)
-        profile = UserProfile.objects.create(account=account, **data)
-        if profile and profile.email:
-            profile.send_confirmation_email()
+        account = cls.objects.create(user=user, **data)
+        UserProfile.objects.create(account=account)
+        if account and account.email:
+            account.send_confirmation_email()
         return account
 
     def update(self, **data):
@@ -254,9 +252,6 @@ class Account(models.Model):
             self.update(email_confirm=self.email, email=None)
             return True
         return False
-
-    def tg_code(self):
-        return int(self.user.date_joined.timestamp()) + self.telegram_chat_id
 
     def __str__(self):
         return self.username
