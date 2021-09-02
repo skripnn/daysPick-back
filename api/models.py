@@ -254,7 +254,7 @@ class Account(models.Model):
         letter = {
             'theme': 'Восстановление доступа к аккаунту',
             'body': f'Для восстановления досутпа к аккаунту {self.username} перейди по ссылке: '
-                    f'https://dayspick.ru/recovery/?user={self.username}&code={code}',
+                    f'https://dayspick.ru/recovery/?user={self.username}&code={code}&to=settings',
             'to': self.email_confirm
         }
         Mail.send(**letter)
