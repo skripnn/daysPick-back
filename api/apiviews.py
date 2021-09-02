@@ -48,11 +48,11 @@ class LoginView(APIView):
     permission_classes = ()
 
     def post(self, request):
-        username = request.data.get("username").lower()
-        password = request.data.get("password")
-        email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-        if re.fullmatch(email_regex, username):
-            account = Account.objects.filter(email_confirm=username).first()
+        username = request.data.pop("username", None)
+        password = request.data.pop("password")
+        if not username:
+            data = dict([(key + '_confirm', value) for key, value in request.data.items()])
+            account = Account.objects.filter(**data).first()
             if account:
                 username = account.username
         user = authenticate(username=username, password=password)
