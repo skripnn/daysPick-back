@@ -15,7 +15,7 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
-    command: redis-server --bind redis --appendonly yes
+    command: redis-server --bind redis --requirepass redis --appendonly yes
     volumes:
       - ./redis_scripts/sysctl.conf:/etc/sysctl.conf
     sysctls:
@@ -38,7 +38,7 @@ services:
   celery:
     image: app-image
     container_name: celery_worker
-    command: celery -A timespick worker --loglevel=INFO --broker=redis://redis:6379
+    command: celery -A timespick worker --loglevel=INFO --broker=redis://redis:redis@redis:6379
     volumes:
       - .:/code
     depends_on:
@@ -49,7 +49,7 @@ services:
     build: .
     image: app-image
     container_name: flower
-    command: celery -A timespick flower -loglevel=INFO --broker=redis://redis:6379 --port=5555
+    command: celery -A timespick flower -loglevel=INFO --broker=redis://redis:redis@redis:6379 --port=5555
     volumes:
       - .:/code
     ports:
