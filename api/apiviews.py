@@ -10,11 +10,10 @@ from django.db.models.functions import Round
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.bot import BotNotification
 from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag, ProjectResponse, Account
-from api.serializers import ProjectSerializer, ProfileSerializer, \
-    ClientShortSerializer, ClientSerializer, TagSerializer, \
-    ProjectListItemSerializer, ProfileShortSerializer, AccountSerializer
+from api.serializers import ClientSerializer, TagSerializer, AccountSerializer, \
+    ClientItemSerializer, ProfileItemSerializer, ProfileItemShortSerializer, \
+    SeriesFillingSerializer, ProjectListItemSerializer, ProfileSerializer
 
 date_format = '%Y-%m-%d'
 
@@ -201,94 +200,100 @@ class ConfirmView(APIView):
         return Response({'error': 'Неверная ссылка'})
 
 
-class UserView(APIView):
+class ProfileView(APIView):
     permission_classes = ()
 
     def get(self, request, username=None):
         profile = UserProfile.get(username)
         asker = UserProfile.get(request)
-        if not profile:
-            return Response({'error': f'Пользователь {username} не найден'})
-        if request.GET.get('projects'):
-            return Response(ProjectListItemSerializer(profile.get_actual_projects(asker), many=True).data)
-        if request.GET.get('offers'):
-            return Response(ProjectListItemSerializer(profile.get_actual_offers(), many=True).data)
-        if request.GET.get('profile'):
-            if request.GET['profile'] == 'short':
-                return Response(ProfileShortSerializer(profile).data)
-            return Response(ProfileSerializer(profile).data)
-        return Response(profile.page(asker))
+        if profile:
+            return Response(profile.page(asker, start=request.GET.get('start'), end=request.GET.get('end')))
+        return Response({'error': f'Пользователь {username} не найден'})
 
 
 class ProjectView(APIView):
-    def get(self, request, pk):
+    def get(self, request, pk=None):
         asker = UserProfile.get(request)
-        if pk is not None:
+        if pk:
             project = Project.objects.filter(pk=pk).first()
             if project:
-                if not project.user:
-                    return Response(ProjectSerializer(project).data)
-                if any((asker == project.creator,
-                        asker == project.user,)) and asker != project.canceled:
-                    return Response(ProjectSerializer(project).data)
-        return Response(status=404)
+                page = project.page(asker)
+                if page:
+                    return Response(page)
+        result = {
+            'project': {
+                'id': None,
+                'title': None,
+                'days': {},
+                'money': None,
+                'money_calculating': False,
+                'money_per_day': None,
+                'client': None,
+                'user': None,
+                'creator': ProfileItemShortSerializer(asker).data,
+                'canceled': None,
+                'is_paid': False,
+                'is_wait': True,
+                'info': None,
+                'parent': None,
+                'confirmed': False
+            },
+            'calendar': {
+                'days': {},
+                'daysOff': []
+            }
+        }
+        user = UserProfile.get(request.GET.get('user'))
+        series = Project.get(request.GET.get('series'))
+
+        if series:
+            user = series.user
+            series_fields = SeriesFillingSerializer(series).data
+            result['project'].update(series_fields)
+            result['project'].update({
+                'is_series': False,
+                'parent': ProjectListItemSerializer(series).data
+            })
+
+        if user:
+            result['project'].update({
+                'user': ProfileItemShortSerializer(user).data,
+                'is_wait': user != asker,
+                'confirmed': user == asker
+            })
+            result['calendar'] = user.get_calendar(asker)
+
+        return Response(result)
 
     def post(self, request, pk=None):
         asker = UserProfile.get(request)
-        data = request.data
-        project = None
-        if pk is not None:
-            project = Project.objects.get(pk=pk)
-            if project.creator != project.user:
-                if asker == project.creator:
-                    data.pop('is_paid')
-                    data['confirmed'] = False
-                else:
-                    data['confirmed'] = True
-                    data['is_wait'] = False
+        if not pk:
+            project = asker.create_project(request.data)
         else:
-            if data.get('creator') != data.get('user'):
-                data['is_wait'] = True
-                data['confirmed'] = False
-        serializer = ProjectSerializer(instance=project, data=data)
-        if serializer.is_valid(raise_exception=False):
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            print(serializer.errors)
-            try:
-                project.update(**data)
-                return Response(ProjectSerializer(project).data)
-            except Exception as e:
-                print(e)
-        return Response(status=500)
+            project = asker.update_project(pk, request.data)
+        if isinstance(project, Project):
+            return Response(ProjectListItemSerializer(project).data)
+        return Response(project)
 
     def delete(self, request, pk):
         asker = UserProfile.get(request)
-        project = Project.objects.get(pk=pk)
-        if project.parent:
-            project.parent.child_delete(project)
-        if project.creator != project.user and not project.canceled:
-            project.canceled = asker
-            project.confirmed = True
-            project.is_wait = True
-            project.save()
-            if project.canceled == project.creator:
-                BotNotification.cancel_project(project)
-            elif project.canceled == project.user:
-                BotNotification.decline_project(project)
-        else:
-            project.delete()
-
-        return Response({})
+        result = asker.delete_project(pk)
+        return Response(result)
 
 
 class ClientsView(ListView):
-    serializer = ClientShortSerializer
+    serializer = ClientItemSerializer
 
     def search(self, request, data):
         profile = UserProfile.get(request)
         return Response(self.get_paginator(profile.clients, data))
+
+
+class ClientsCompaniesView(APIView):
+    def get(self, request):
+        profile = UserProfile.get(request)
+        companies = profile.clients.exclude(company='').order_by('company').values_list('company', flat=True).distinct()
+        return Response(companies)
 
 
 class ClientView(APIView):
@@ -301,7 +306,7 @@ class ClientView(APIView):
         client = None
         if pk is not None:
             client = Client.objects.get(id=pk)
-        serializer = ClientShortSerializer(client, data=request.data)
+        serializer = ClientItemSerializer(client, data=request.data)
         if serializer.is_valid(raise_exception=True):
             serializer.save(user=profile)
             return Response(serializer.data)
@@ -313,7 +318,6 @@ class ClientView(APIView):
 
 
 class DaysOffView(APIView):
-
     def post(self, request):
         profile = UserProfile.get(request)
         dop = profile.days_off_project
@@ -332,7 +336,7 @@ class DaysOffView(APIView):
 
 class ProfilesView(ListView):
     permission_classes = ()
-    serializer = ProfileSerializer
+    serializer = ProfileItemSerializer
 
     def search(self, request, data):
         return Response(self.get_paginator(UserProfile, data))
@@ -372,11 +376,8 @@ class ProjectsView(ListView):
         user = UserProfile.get(data.get('user'))
         asker = UserProfile.get(request)
         if not user:
-            if data.get('open'):
-                projects = Project.objects.filter(user__isnull=True)
-            else:
-                projects = asker.projects()
-        elif user == asker:
+            user = asker
+        if user == asker:
             projects = user.projects()
         else:
             projects = user.projects(asker).filter(creator=asker)
@@ -393,7 +394,7 @@ class OffersView(ListView):
         return Response(self.get_paginator(projects, data))
 
 
-class UserProfileView(APIView):
+class ProfileEditView(APIView):
     def post(self, request):
         profile = UserProfile.get(request)
         if profile:
@@ -454,19 +455,18 @@ class TagsView(APIView):
         return Response(serializer.data)
 
 
-class ProjectsStatisticsView(APIView):
-    def post(self, request):
-        profile = UserProfile.get(request)
-
+class StatisticsView(APIView):
+    def post(self, request, projects=None):
+        dates = None
         if request.data:
-            projects = profile.projects().search(**request.data)
-            days = Day.objects.filter(project__in=projects)
+            projects = projects.search(**request.data)
             dates = request.data.get('days')
-            if dates:
-                dates = [datetime.strptime(date, '%Y-%m-%d') for date in dates]
-                days = days.filter(date__in=dates)
-        else:
-            days = Day.objects.filter(project__user=profile, project__creator__isnull=False)
+        days = Day.objects.filter(project__in=projects)
+        if dates:
+            dates = [datetime.strptime(date, '%Y-%m-%d') for date in dates]
+            days = days.filter(date__in=dates)
+        # else:
+        #     days = Day.objects.filter(project__user=profile, project__creator__isnull=False)
 
         result = days.aggregate(
             sum=Round(Sum('project__money_per_day')),
@@ -474,6 +474,20 @@ class ProjectsStatisticsView(APIView):
             projects=Count('project', distinct=True))
 
         return Response(result)
+
+
+class OffersStatisticsView(StatisticsView):
+    def post(self, request, projects=None):
+        profile = UserProfile.get(request)
+        projects = profile.offers()
+        return super().post(request, projects)
+
+
+class ProjectsStatisticsView(StatisticsView):
+    def post(self, request, projects=None):
+        profile = UserProfile.get(request)
+        projects = profile.projects()
+        return super().post(request, projects)
 
 
 class ProjectResponseView(APIView):

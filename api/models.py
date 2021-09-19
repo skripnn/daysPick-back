@@ -6,8 +6,7 @@ from functools import reduce
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models, OperationalError
-from django.db.models import Q, Count, Sum
-from django.db.models.functions import Round
+from django.db.models import Q, Count
 from django.utils import timezone
 from pyaspeller.yandex_speller import YandexSpeller
 
@@ -174,7 +173,11 @@ class Account(models.Model):
             return username.account
         if isinstance(username, cls):
             return username
-        return cls.objects.filter(user__username=username).first() or alt
+        if str(username).isdigit():
+            params = {'profile__id': int(username)}
+        else:
+            params = {'user__username': username}
+        return cls.objects.filter(**params).first() or alt
 
     @classmethod
     def create(cls, **data):
@@ -184,6 +187,7 @@ class Account(models.Model):
         user = User.objects.create_user(username=username, password=password)
         account = cls.objects.create(user=user, **data)
         UserProfile.objects.create(account=account)
+        account.update(username=str(account.profile.id))
         if account and account.email:
             account.send_confirmation_email()
         return account
@@ -323,6 +327,10 @@ class UserProfile(models.Model):
         if not kwargs:
             return users
 
+        if kwargs.get('exclude'):
+            pk = kwargs['exclude']
+            users = users.exclude(pk=pk)
+
         if kwargs.get('filter'):
             search = kwargs['filter']
             if isinstance(search, list):
@@ -408,13 +416,16 @@ class UserProfile(models.Model):
         if asker == self:
             return self.projects(asker).actual().reverse()
         if not asker:
-            return []
+            return Project.objects.none()
         return self.projects(asker).filter(creator=asker).actual().reverse()
 
     def get_actual_offers(self):
         return self.offers().actual().reverse()
 
     def get_calendar(self, asker=None, start=None, end=None, project_id=0, offers=False):
+        if not start:
+            start = datetime.now().date()
+            start = start - timedelta(start.weekday() + 15 * 7)
         from api.serializers import CalendarDaySerializer
         if offers:
             all_days = Day.objects.filter(project__creator=self).exclude(project__user=self)
@@ -453,24 +464,71 @@ class UserProfile(models.Model):
             'daysOff': days_off.dates('date', 'day')
         }
 
-    def page(self, asker, token=False, additional=None):
-        from api.serializers import ProfileSerializer
-        start_date = datetime.now().date()
-        start_date = start_date - timedelta(start_date.weekday() + 15 * 7)
-        from api.serializers import ProjectListItemSerializer
+    def page(self, asker, start=None, end=None):
+        from api.serializers import ProfileSerializer, ProjectListItemSerializer
+        projects = self.get_actual_projects(asker)
         result = {
-            'user': ProfileSerializer(self).data,
-            'projects': ProjectListItemSerializer(self.get_actual_projects(asker), many=True).data,
-            'calendar': self.get_calendar(asker, start_date)
+            'id': self.id,
+            'username': self.username,
+            'profile': ProfileSerializer(self).data,
+            'projects': ProjectListItemSerializer(projects, many=True).data,
+            'calendar': self.get_calendar(asker, start, end),
+            'tab': 'projects' if len(projects) or asker == self else 'profile',
+            'is_self': self == asker,
+            'unconfirmed_projects': projects.filter(confirmed=False).count() if asker == self else 0
         }
-        if asker == self:
-            result['offers'] = ProjectListItemSerializer(self.get_actual_offers(), many=True).data
-            result['offersCalendar'] = self.get_calendar(start=start_date, offers=True)
-        if token:
-            result['token'] = self.account.token()
-        if additional:
-            result.update(additional)
         return result
+
+    def create_project(self, data):
+        from api.serializers import ProjectSerializer, ProfileItemSerializer
+        data['creator'] = ProfileItemSerializer(self).data
+        serializer = ProjectSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            project = serializer.instance
+            if not project.is_self:
+                from api.bot import BotNotification
+                BotNotification.create_project(project)
+            return project
+        print(serializer.errors)
+        return {'error': 'Ошибка сохранения проекта'}
+
+    def update_project(self, pk, data):
+        from api.serializers import ProjectSerializer
+        project = Project.objects.filter(pk=pk).first()
+        if not project:
+            return {'error': 'Проект не найден'}
+        serializer = ProjectSerializer(instance=project, data=data, partial=True)
+        if serializer.is_valid(raise_exception=False):
+            serializer.save()
+            project = serializer.instance
+            if not project.is_self:
+                from api.bot import BotNotification
+                if project.creator == self:
+                    BotNotification.update_project(project)
+                if project.user == self:
+                    BotNotification.accept_project(project)
+            return serializer.instance
+        print(serializer.errors)
+        return {'error': 'Ошибка сохранения проекта'}
+
+    def delete_project(self, pk):
+        project = Project.objects.filter(pk=pk).first()
+        if not project:
+            return {'error': 'Проект не найден'}
+        if not project.is_self and not project.canceled:
+            project.canceled = self
+            project.confirmed = True
+            project.is_wait = True
+            project.save()
+            from api.bot import BotNotification
+            if project.creator == self:
+                BotNotification.cancel_project(project)
+            elif project.user == self:
+                BotNotification.decline_project(project)
+        else:
+            project.delete()
+        return {}
 
     def update(self, **kwargs):
         for key, value in kwargs.items():
@@ -514,6 +572,10 @@ class Client(models.Model):
     objects = ClientsManager()
 
     @property
+    def projects_list(self):
+        return self.projects.without_folders()
+
+    @property
     def full_name(self):
         full_name = self.name
         if self.company:
@@ -530,7 +592,7 @@ class ProjectsQuerySet(models.QuerySet):
         return self.filter(parent__isnull=True)
 
     def folders(self):
-        return self.filter(children__isnull=False).distinct()
+        return self.filter(is_series=True).distinct()
 
     def without_folders(self):
         return self.filter(children__isnull=True).distinct()
@@ -546,7 +608,7 @@ class ProjectsQuerySet(models.QuerySet):
         if folders:
             projects = self.folders()
         elif search or days or without_folders:
-            projects = self.without_folders()
+            projects = self
         else:
             projects = self.without_children()
 
@@ -601,9 +663,13 @@ class Project(models.Model):
     info = models.TextField(**null)
     is_paid = models.BooleanField(default=False)
     is_wait = models.BooleanField(default=False)
+
     canceled = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, related_name='canceled_projects', **null)
     confirmed = models.BooleanField(default=True)
+
     parent = models.ForeignKey('self', on_delete=models.CASCADE, related_name='children', null=True, blank=True)
+
+    is_series = models.BooleanField(default=False)
 
     objects = ProjectsManager()
 
@@ -618,12 +684,12 @@ class Project(models.Model):
             self.date_end = None
 
     @property
-    def dates(self):
-        return [i.date for i in self.days.all()]
+    def is_self(self):
+        return self.creator == self.user
 
     @property
-    def is_folder(self):
-        return bool(self.children.count())
+    def dates(self):
+        return [i.date for i in self.days.all()]
 
     def child_delete(self, child):
         self.children.remove(child)
@@ -640,8 +706,10 @@ class Project(models.Model):
 
     @classmethod
     def get(cls, data):
+        if isinstance(data, str) and data.isdigit():
+            data = int(data)
         if isinstance(data, int):
-            return cls.objects.filter(id=data).first()
+            return cls.objects.filter(pk=data).first()
         if isinstance(data, dict):
             return cls.objects.filter(**data).first()
         return None
@@ -672,6 +740,21 @@ class Project(models.Model):
             title = self.parent.title + ' / ' + title
 
         return title
+
+    def page(self, asker):
+        if (self.user != asker and self.creator != asker) or self.canceled == asker:
+            return None
+        from api.serializers import ProjectSerializer
+        result = {
+            'project': ProjectSerializer(self).data
+        }
+        if self.user:
+            date_start = self.date_start or timezone.now()
+            start = date_start - timedelta(days=date_start.weekday(), weeks=15)
+            end = start + timedelta(weeks=68)
+            result['calendar'] = self.user.get_calendar(asker, start, end, project_id=self.id)
+            result['calendar']['daysPick'] = self.dates
+        return result
 
     def __str__(self):
         return self.get_title()
@@ -706,3 +789,28 @@ class ProjectResponse(models.Model):
     user = models.ForeignKey('UserProfile', related_name='responses', on_delete=models.CASCADE)
     comment = models.TextField(**null)
     time = models.DateTimeField(auto_now_add=True)
+
+
+class FoldersManager(models.Manager):
+    use_for_related_fields = True
+
+    def search(self, **kwargs):
+        if not kwargs:
+            return self.get_queryset().all()
+
+        search = kwargs.get('filter')
+        clients = self.get_queryset()
+
+        if search:
+            if isinstance(search, list):
+                search = search[0]
+            spelled = YandexSpeller().spelled(search)
+            options = [option for option in spelled.split(' ') if len(option) > 1]
+            vector = SearchVector('title')
+            clients = clients.filter(
+                Q(title__icontains=search) |
+                Q(title__icontains=spelled) |
+                Q(title__in=options)
+            ).annotate(rank=SearchRank(vector, search)).order_by('-rank')
+
+        return clients

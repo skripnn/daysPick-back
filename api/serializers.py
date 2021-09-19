@@ -1,7 +1,5 @@
 from rest_framework import serializers
-
-from api.bot import BotNotification
-from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, ProjectResponse, Account
+from api.models import Project, Day, Client, UserProfile, Tag, FacebookAccount, Account
 
 
 def update_data(instance, validated_data, fields: list or str):
@@ -10,6 +8,12 @@ def update_data(instance, validated_data, fields: list or str):
     for field in fields:
         value = validated_data.get(field, getattr(instance, field))
         setattr(instance, field, value)
+
+
+class RecursiveField(serializers.Serializer):
+    def to_representation(self, value):
+        serializer = self.parent.parent.__class__(value, context=self.context)
+        return serializer.data
 
 
 class FacebookAccountSerializer(serializers.ModelSerializer):
@@ -33,40 +37,32 @@ class TagSerializer(serializers.ModelSerializer):
         fields = ['id', 'title']
 
 
-class AccountSerializer(serializers.ModelSerializer):
+
+class ItemSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Account
-        exclude = ['user', 'raised']
+        model = ...
 
-    username = serializers.CharField(read_only=True)
-    facebook_account = FacebookAccountSerializer(allow_null=True)
-    is_confirmed = serializers.BooleanField(read_only=True)
-    can_be_raised = serializers.BooleanField(read_only=True)
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            pk = data.get('id')
+        elif isinstance(data, int):
+            pk = data
+        else:
+            return None
+        return self.Meta.model.objects.filter(id=pk).first()
 
 
-class ProfileShortSerializer(serializers.ModelSerializer):
+class ClientItemSerializer(ItemSerializer):
+    class Meta:
+        model = Client
+        fields = ['id', 'name', 'full_name', 'company']
+        read_only_fields = ['full_name']
+
+
+class ProfileItemSerializer(ItemSerializer):
     class Meta:
         model = UserProfile
         fields = ['id', 'username', 'full_name', 'avatar']
-        read_only_fields = ['id', 'username', 'full_name']
-
-
-class ProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserProfile
-        exclude = ['id', 'account']
-
-    username = serializers.CharField(read_only=True)
-    full_name = serializers.CharField(read_only=True)
-    is_public = serializers.SerializerMethodField('get_is_public', read_only=True)
-
-    def get_is_public(self, instance):
-        if instance.account:
-            return instance.account.is_public
-        return False
-
-    def get_is_confirmed(self, instance):
-        return instance.is_confirmed
 
     def to_representation(self, obj):
         ret = super().to_representation(obj)
@@ -77,20 +73,72 @@ class ProfileSerializer(serializers.ModelSerializer):
 
         return ret
 
-    def page(self, asker, token=False):
-        result = {
-            'user': self.data,
-            'projects': ProjectSerializer(self.instance.get_actual_projects(asker), many=True).data
-        }
-        if token:
-            result['token'] = self.instance.token()
-        return result
+
+class ProfileItemShortSerializer(ItemSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['id', 'full_name', 'avatar']
 
 
-class ClientProjectSerializer(serializers.ModelSerializer):
+class ProjectShortSerializer(ItemSerializer) :
     class Meta:
         model = Project
         fields = ['id', 'title']
+
+
+class ProfileShortSerializer(ItemSerializer):
+    class Meta:
+        model = UserProfile
+        fields = ['id', 'full_name']
+
+
+class ClientShortSerializer(ItemSerializer):
+    class Meta:
+        model = Client
+        fields = ['id', 'full_name']
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        exclude = ['id', 'account']
+
+    username = serializers.CharField(read_only=True)
+    full_name = serializers.CharField(read_only=True)
+    is_public = serializers.SerializerMethodField('get_is_public', read_only=True)
+    tags = serializers.SerializerMethodField('get_tags')
+
+    @staticmethod
+    def get_tags(instance):
+        return TagSerializer(instance.tags.list(), many=True).data
+
+    @staticmethod
+    def get_is_public(instance):
+        if instance.account:
+            return instance.account.is_public
+        return False
+
+
+class AccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        exclude = ['user', 'raised']
+
+    id = serializers.SerializerMethodField('get_profile_id', read_only=True)
+    username = serializers.CharField(read_only=True)
+    facebook_account = FacebookAccountSerializer(allow_null=True)
+    is_confirmed = serializers.BooleanField(read_only=True)
+    can_be_raised = serializers.BooleanField(read_only=True)
+    profile = ProfileSerializer()
+    unconfirmed_projects = serializers.SerializerMethodField('get_unconfirmed_projects')
+
+    @staticmethod
+    def get_profile_id(instance):
+        return instance.profile.id
+
+    @staticmethod
+    def get_unconfirmed_projects(instance):
+        return instance.profile.projects().filter(confirmed=False).count()
 
 
 class ClientSerializer(serializers.ModelSerializer):
@@ -99,25 +147,11 @@ class ClientSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'company', 'projects']
         read_only_fields = ['id']
 
-    projects = ClientProjectSerializer(many=True, read_only=True)
+    projects = serializers.SerializerMethodField('get_projects')
 
-
-class ClientShortSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Client
-        fields = ['id', 'name', 'company', 'full_name']
-        read_only_fields = ['full_name']
-
-    def create(self, validated_data):
-        return Client.objects.get_or_create(**validated_data)[0]
-
-
-class ProjectShortSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Project
-        fields = ['id', 'title', 'client', 'money', 'is_paid', 'is_wait']
-
-    client = ClientShortSerializer()
+    @staticmethod
+    def get_projects(instance):
+        return ProjectShortSerializer(instance.projects.all().without_folders(), many=True, allow_null=True).data
 
 
 class ListProjectDaySerializer(serializers.ListSerializer):
@@ -191,175 +225,55 @@ class CalendarDaySerializer(serializers.ModelSerializer):
         pass
 
 
-class ProjectResponseSerializer(serializers.ModelSerializer):
+class ProjectListItemSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ProjectResponse
-        exclude = ['id', 'project']
+        model = Project
+        fields = ['id', 'title', 'client', 'creator', 'user', 'money', 'money_per_day', 'money_calculating', 'dates', 'date_start', 'date_end', 'parent', 'children', 'is_wait', 'is_paid', 'canceled', 'confirmed', 'is_series']
 
-    user = serializers.SerializerMethodField('get_user')
+    client = ClientShortSerializer(allow_null=True)
+    creator = ProfileShortSerializer()
+    user = ProfileShortSerializer(allow_null=True)
+    canceled = ProfileShortSerializer(allow_null=True)
+    dates = serializers.SerializerMethodField('get_dates')
+    parent = ProjectShortSerializer(allow_null=True)
+    children = RecursiveField(many=True, allow_null=True, read_only=True)
 
-    def get_user(self, obj):
-        return ProfileShortSerializer(obj.profile).data
-
-
-class RecursiveField(serializers.Serializer):
-    def to_representation(self, value):
-        serializer = self.parent.parent.__class__(value, context=self.context)
-        return serializer.data
+    def get_dates(self, obj):
+        return [i.date for i in obj.days.all()]
 
 
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        read_only_fields = ['id', 'date_start', 'date_end', 'is_folder', 'children', 'creator_info', 'user_info', 'responses']
+        read_only_fields = ['id', 'date_start', 'date_end', 'children']
         fields = '__all__'
 
     days = ProjectDaySerializer(many=True, allow_null=True, default=None)
-    client = ClientShortSerializer(allow_null=True, default=None)
-    creator_info = serializers.SerializerMethodField('get_creator_info', allow_null=True)
-    user_info = serializers.SerializerMethodField('get_user_info', allow_null=True)
-    user = serializers.CharField(allow_null=True)
-    creator = serializers.CharField(allow_null=True)
-    canceled = serializers.CharField(allow_null=True,  default=None)
-    children = RecursiveField(many=True, allow_null=True, read_only=True)
-    is_folder = serializers.BooleanField(read_only=True)
-    parent = serializers.SerializerMethodField('get_parent', allow_null=True)
-    responses = ProjectResponseSerializer(allow_null=True, many=True, read_only=True)
-
-    def get_creator_info(self, obj):
-        if not obj.creator:
-            return None
-        return ProfileShortSerializer(obj.creator).data
-
-    def get_user_info(self, obj):
-        if not obj.user:
-            return None
-        return ProfileShortSerializer(obj.user).data
-
-    def get_parent(self, obj):
-        if not obj.parent:
-            return None
-        return {'id': obj.parent.id, 'title': obj.parent.title}
+    client = ClientItemSerializer(allow_null=True, default=None)
+    creator = ProfileItemShortSerializer()
+    user = ProfileItemShortSerializer(allow_null=True, default=None)
+    canceled = ProfileItemShortSerializer(allow_null=True, default=None)
+    children = ProjectListItemSerializer(many=True, allow_null=True, read_only=True)
+    parent = ProjectShortSerializer(allow_null=True, default=None)
 
     def create(self, validated_data):
-        validated_data['user'] = UserProfile.get(validated_data['user'])
-        validated_data['creator'] = UserProfile.get(validated_data['creator'])
-        if validated_data.get('client'):
-            validated_data['client'] = Client.objects.filter(**validated_data['client']).first()
         days = validated_data.pop('days')
-        days.sort(key=lambda i: i['date'])
-        validated_data['date_start'] = days[0]['date']
-        validated_data['date_end'] = days[-1]['date']
+        project = super().create(validated_data)
+        if days:
+            project.update(days=days)
 
-        project = Project.objects.create(**validated_data)
-        for day in days:
-            project.days.create(**day)
-        parent = self.parent_set(validated_data)
-        if parent:
-            parent.children.add(project)
-            parent.parent_days_set()
-        if project.user and project.user != project.creator:
-            BotNotification.create_project(project)
         return project
 
     def update(self, instance, validated_data):
-        if validated_data.get('user') and validated_data['user'] != instance.user.username:
-            instance.canceled = instance.creator
-            instance.is_wait = True
-            instance.save()
-            return self.create(validated_data)
-        validated_data['user'] = UserProfile.get(validated_data['user'])
-        validated_data['creator'] = UserProfile.get(validated_data['creator'])
-        if validated_data.get('client'):
-            validated_data['client'] = Client.objects.get(user=instance.user, **validated_data['client'])
-        validated_data['parent'] = self.parent_set(validated_data, instance)
-        fields = ['client', 'title', 'money', 'money_per_day', 'money_calculating', 'info', 'is_paid', 'is_wait', 'confirmed', 'parent']
-        if validated_data.get('is_paid'):
-            validated_data['is_wait'] = False
-        update_data(instance, validated_data, fields)
+        days = validated_data.pop('days', None)
+        project = super().update(instance, validated_data)
+        if days:
+            project.update(days=days)
 
-        days = validated_data.pop('days')
-        days.sort(key=lambda i: i['date'])
-        instance.days.set([Day.objects.get_or_create(project=instance, **day)[0] for day in days])
-        Day.objects.filter(project__isnull=True).delete()
-        if instance.is_folder:
-            days = [{'date': day.date} for day in Day.objects.filter(project__parent=instance)]
-        instance.date_start = days[0]['date']
-        instance.date_end = days[-1]['date']
-        instance.save()
-        if instance.parent:
-            instance.parent.parent_days_set()
-        if instance.user != instance.creator:
-            if instance.confirmed:
-                BotNotification.accept_project(instance)
-            elif instance.user:
-                BotNotification.update_project(instance)
-        return instance
-
-    def parent_set(self, validated_data, instance=None):
-        parent = self.initial_data.get('parent')
-        if parent:
-            if parent.get('id'):
-                parent = Project.objects.filter(id=parent['id'], title=parent['title']).first()
-            else:
-                money_params = {'money_calculating': validated_data.get('money_calculating')}
-                if money_params['money_calculating']:
-                    money_params['money_per_day'] = validated_data.get('money_per_day')
-                else:
-                    money_params['money'] = validated_data.get('money')
-                parent = Project.objects.create(
-                    title=parent['title'],
-                    user=validated_data['user'],
-                    creator=validated_data['creator'],
-                    client=validated_data['client'],
-                    **money_params
-                )
-        if instance and instance.parent:
-            if (parent and instance.parent.id != parent.id) or not parent:
-                instance.parent.child_delete(instance)
-        return parent
+        return project
 
 
-class ProfileListItemSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserProfile
-        fields = ['full_name', 'username']
-
-
-class ProjectListItemSerializer(serializers.ModelSerializer):
+class SeriesFillingSerializer(ProjectSerializer):
     class Meta:
         model = Project
-        fields = ['id', 'title', 'client', 'creator', 'user', 'money', 'info', 'dates', 'parent', 'children', 'is_wait', 'is_paid', 'canceled', 'confirmed',  'date_start', 'date_end', 'dates']
-
-    client = serializers.SerializerMethodField('get_client')
-    creator = ProfileListItemSerializer()
-    user = ProfileListItemSerializer()
-    canceled = ProfileListItemSerializer()
-    dates = serializers.SerializerMethodField('get_dates')
-    parent = serializers.SerializerMethodField('get_parent', allow_null=True)
-    children = RecursiveField(many=True, allow_null=True, read_only=True)
-
-    def get_parent(self, obj):
-        if not obj.parent:
-            return None
-        return {'id': obj.parent.id, 'title': obj.parent.title}
-
-    def get_client(self, obj):
-        if obj.client:
-            return {
-                'name': obj.client.name,
-                'full_name': obj.client.full_name
-            }
-        return None
-
-    def get_dates(self, obj):
-        return [i.date for i in obj.days.all()]
-
-    def to_representation(self, instance):
-        result = super().to_representation(instance)
-        if instance.is_folder:
-            result.pop('client')
-            result.pop('money')
-        else:
-            result.pop('children')
-        return result
+        fields = ['client', 'user', 'money', 'money_per_day', 'money_calculating']

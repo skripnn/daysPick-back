@@ -15,10 +15,11 @@ Including another URLconf
 """
 from django.urls import path
 
-from api.apiviews import ProjectView, UserView, LoginView, SignupView, DaysOffView, ProfilesView, \
-    ConfirmView, CalendarView, ProjectsView, ClientsView, ClientView, UserProfileView, \
+from api.apiviews import ProjectView, LoginView, SignupView, DaysOffView, ProfilesView, \
+    ConfirmView, CalendarView, ProjectsView, ClientsView, ClientView, ProfileEditView, \
     TagsView, ImgView, LoginFacebookView, LoginTelegramView, OffersView, \
-    ProjectsStatisticsView, ProjectResponseView, AccountView, RecoveryView
+    ProjectsStatisticsView, ProjectResponseView, AccountView, RecoveryView, ProfileView, OffersStatisticsView, \
+    ClientsCompaniesView
 
 urlpatterns = [
     path('login/facebook/', LoginFacebookView.as_view()),
@@ -34,7 +35,7 @@ urlpatterns = [
 
     path('profile/tags/', TagsView.as_view()),
     path('profile/img/', ImgView.as_view()),
-    path('profile/', UserProfileView.as_view()),
+    path('profile/', ProfileEditView.as_view()),
 
     path('account/', AccountView.as_view()),
 
@@ -43,6 +44,7 @@ urlpatterns = [
     path('calendar/offers/', CalendarView.as_view()),
     path('calendar/', CalendarView.as_view()),
 
+    path('offers/statistics/', OffersStatisticsView.as_view()),
     path('offers/', OffersView.as_view()),
     path('projects/statistics/', ProjectsStatisticsView.as_view()),
     path('projects/', ProjectsView.as_view()),
@@ -50,15 +52,11 @@ urlpatterns = [
     path('project/<int:pk>/', ProjectView.as_view()),
     path('project/', ProjectView.as_view()),
 
-    # path('offers/', OffersView2.as_view()),
-    # path('projects/', ProjectsView2.as_view()),
-    # path('project2/<int:pk>/', ProjectView2.as_view()),
-    # path('project2/', ProjectView2.as_view()),
-
+    path('clients/companies/', ClientsCompaniesView.as_view()),
     path('clients/', ClientsView.as_view()),
     path('client/<int:pk>/', ClientView.as_view()),
     path('client/', ClientView.as_view()),
 
-    path('@<str:username>/', UserView.as_view()),
+    path('@<str:username>/', ProfileView.as_view()),
     path('', ProfilesView.as_view())
 ]

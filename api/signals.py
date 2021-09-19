@@ -37,6 +37,12 @@ def auto_delete_file_on_delete(sender, instance, **kwargs):
     deleting(instance.photo)
 
 
+@receiver(models.signals.pre_delete, sender=UserProfile)
+def delete_account_and_user(sender, instance, **kwargs):
+    if instance.account:
+        instance.account.delete()
+
+
 @receiver(models.signals.post_save, sender=Account)
 def account_post_save(sender, instance, created, **kwargs):
     if created:
@@ -78,4 +84,3 @@ def account_post_delete(sender, instance, **kwargs):
     BotNotification.send_to_admins(f'Аккаунт удален.\nusername: {instance.username}')
     if instance.user:
         instance.user.delete()
-
