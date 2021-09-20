@@ -46,6 +46,13 @@ class ListView(APIView, metaclass=ABCMeta):
 class LoginView(APIView):
     permission_classes = ()
 
+    @staticmethod
+    def response(account):
+        return Response({
+            'token': account.token(),
+            'account': AccountSerializer(account).data
+        })
+
     def post(self, request):
         username = request.data.pop("username", None)
         password = request.data.pop("password")
@@ -56,15 +63,11 @@ class LoginView(APIView):
                 username = account.username
         user = authenticate(username=username, password=password)
         if user:
-            account = user.account
-            return Response({
-                'token': account.token(),
-                'account': AccountSerializer(account).data
-            })
+            return self.response(user.account)
         return Response({"error": "Неверное имя пользователя или пароль"})
 
 
-class LoginFacebookView(APIView):
+class LoginFacebookView(LoginView):
     permission_classes = ()
 
     def post(self, request):
@@ -80,10 +83,10 @@ class LoginFacebookView(APIView):
                 'email_confirm': request.data.get('email')
             }
             account = Account.create(**data).update(facebook_account=request.data)
-        return Response(account.profile.page(asker=account.profile, token=True))
+        return self.response(account)
 
 
-class LoginTelegramView(APIView):
+class LoginTelegramView(LoginView):
     permission_classes = ()
 
     def post(self, request):
@@ -95,7 +98,7 @@ class LoginTelegramView(APIView):
                 'telegram_chat_id': int(request.data.get('id'))
             }
             account = Account.create(**data)
-        return Response(account.profile.page(asker=account.profile, token=True))
+        return self.response(account)
 
 
 class SignupView(APIView):

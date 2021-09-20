@@ -37,7 +37,6 @@ class TagSerializer(serializers.ModelSerializer):
         fields = ['id', 'title']
 
 
-
 class ItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = ...
@@ -80,10 +79,20 @@ class ProfileItemShortSerializer(ItemSerializer):
         fields = ['id', 'full_name', 'avatar']
 
 
-class ProjectShortSerializer(ItemSerializer) :
+class ProjectShortSerializer(ItemSerializer):
     class Meta:
         model = Project
         fields = ['id', 'title']
+
+
+class ProjectShortGetTitleSerializer(ItemSerializer):
+    class Meta:
+        model = Project
+        fields = ['id', 'title']
+
+    title = serializers.SerializerMethodField('get_title')
+    def get_title(self, instance):
+        return instance.get_title()
 
 
 class ProfileShortSerializer(ItemSerializer):
@@ -151,7 +160,7 @@ class ClientSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def get_projects(instance):
-        return ProjectShortSerializer(instance.projects.all().without_folders(), many=True, allow_null=True).data
+        return ProjectShortGetTitleSerializer(instance.projects.all().without_folders(), many=True, allow_null=True).data
 
 
 class ListProjectDaySerializer(serializers.ListSerializer):
