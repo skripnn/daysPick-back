@@ -6,7 +6,7 @@ from functools import reduce
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models, OperationalError
-from django.db.models import Q, Count
+from django.db.models import Q, Count, F
 from django.utils import timezone
 from pyaspeller.yandex_speller import YandexSpeller
 
@@ -34,7 +34,10 @@ class Tag(models.Model):
         if search:
             if isinstance(search, list):
                 search = search[0]
-            spelled = YandexSpeller().spelled(search)
+            try:
+                spelled = YandexSpeller().spelled(search)
+            except:
+                spelled = search
 
             exact = tags.filter(title__iexact=search)
             exact_spelled = tags.filter(title__iexact=spelled)
@@ -98,7 +101,10 @@ class ClientsManager(models.Manager):
         if search:
             if isinstance(search, list):
                 search = search[0]
-            spelled = YandexSpeller().spelled(search)
+            try:
+                spelled = YandexSpeller().spelled(search)
+            except:
+                spelled = search
             options = [option for option in spelled.split(' ') if len(option) > 1]
             vector = SearchVector('name', 'company')
             clients = clients.filter(
@@ -304,7 +310,13 @@ class UserProfile(models.Model):
     def projects(self, asker=None):
         if not asker:
             asker = self
-        return self.all_projects.exclude(creator__isnull=True).exclude(canceled=asker)
+        # projects = self.all_projects.exclude(creator__isnull=True).exclude(canceled=asker).exclude(~Q(creator=self) & Q(is_series=True))
+        projects = Project.objects.exclude(creator__isnull=True).filter(Q(user=self) | Q(children__user=self)).distinct().exclude(canceled=asker)
+        if asker == self:
+            projects = projects
+        else:
+            projects = projects.filter(creator=asker)
+        return projects
 
     def offers(self):
         return self.created_projects.exclude(user=self).exclude(canceled=self)
@@ -338,7 +350,10 @@ class UserProfile(models.Model):
             words = search.split(' ')
             if len(words) == 1 and not words[0]:
                 return []
-            spelled = YandexSpeller().spelled(search)
+            try:
+                spelled = YandexSpeller().spelled(search)
+            except:
+                spelled = search
             options = [option for option in spelled.split(' ') if len(option) > 1]
             digits = ''.join(re.findall('[0-9]', search))
             phone_templates = [match.group(1) for match in re.finditer(r'(?=(\d{9}))', digits)] or ['-']
@@ -471,7 +486,7 @@ class UserProfile(models.Model):
             'id': self.id,
             'username': self.username,
             'profile': ProfileSerializer(self).data,
-            'projects': ProjectListItemSerializer(projects, many=True).data,
+            'projects': ProjectListItemSerializer(projects, many=True, asker=asker).data,
             'calendar': self.get_calendar(asker, start, end),
             'tab': 'projects' if len(projects) or asker == self else 'profile',
             'is_self': self == asker,
@@ -518,7 +533,7 @@ class UserProfile(models.Model):
             return {'error': 'Проект не найден'}
         if not project.is_self and not project.canceled:
             project.canceled = self
-            project.confirmed = True
+            project.confirmed = False
             project.is_wait = True
             project.save()
             from api.bot import BotNotification
@@ -595,7 +610,7 @@ class ProjectsQuerySet(models.QuerySet):
         return self.filter(is_series=True).distinct()
 
     def without_folders(self):
-        return self.filter(children__isnull=True).distinct()
+        return self.filter(is_series=False).distinct()
 
     def actual(self):
         today = timezone.now().date()
@@ -610,12 +625,15 @@ class ProjectsQuerySet(models.QuerySet):
         elif search or days or without_folders:
             projects = self
         else:
-            projects = self.without_children()
+            projects = self.exclude(Q(parent__isnull=False) & Q(creator=F('user')))
 
         if search:
             if isinstance(search, list):
                 search = search[0]
-            spelled = YandexSpeller().spelled(search)
+            try:
+                spelled = YandexSpeller().spelled(search)
+            except:
+                spelled = search
             options = [option for option in spelled.split(' ') if len(option) > 1]
             vector = SearchVector('title', 'client__name', 'client__company')
             projects = projects.filter(
@@ -743,10 +761,10 @@ class Project(models.Model):
 
     def page(self, asker):
         if (self.user != asker and self.creator != asker) or self.canceled == asker:
-            return None
+            return {'error': 'Ошибка загрузки проекта'}
         from api.serializers import ProjectSerializer
         result = {
-            'project': ProjectSerializer(self).data
+            'project': ProjectSerializer(self, asker=asker).data
         }
         if self.user:
             date_start = self.date_start or timezone.now()
@@ -804,7 +822,10 @@ class FoldersManager(models.Manager):
         if search:
             if isinstance(search, list):
                 search = search[0]
-            spelled = YandexSpeller().spelled(search)
+            try:
+                spelled = YandexSpeller().spelled(search)
+            except:
+                spelled = search
             options = [option for option in spelled.split(' ') if len(option) > 1]
             vector = SearchVector('title')
             clients = clients.filter(

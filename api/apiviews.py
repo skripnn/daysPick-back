@@ -31,14 +31,14 @@ class ListView(APIView, metaclass=ABCMeta):
     def search(self, request, data):
         pass
 
-    def get_paginator(self, queryset, data):
+    def get_paginator(self, queryset, data, **kwargs):
         page = int(data.get('page', 0))
         items = queryset.search(**data)
         paginator = Paginator(items, 15)
         pages = paginator.num_pages
         result = paginator.page(page + 1).object_list
         return {
-            'list': self.serializer(result, many=True).data,
+            'list': self.serializer(result, many=True, **kwargs).data,
             'pages': pages
         }
 
@@ -239,7 +239,8 @@ class ProjectView(APIView):
                 'is_wait': True,
                 'info': None,
                 'parent': None,
-                'confirmed': False
+                'confirmed': False,
+                'is_series': False
             },
             'calendar': {
                 'days': {},
@@ -380,12 +381,9 @@ class ProjectsView(ListView):
         asker = UserProfile.get(request)
         if not user:
             user = asker
-        if user == asker:
-            projects = user.projects()
-        else:
-            projects = user.projects(asker).filter(creator=asker)
+        projects = user.projects(asker).without_children()
 
-        return Response(self.get_paginator(projects, data))
+        return Response(self.get_paginator(projects, data, asker=asker))
 
 
 class OffersView(ListView):
@@ -393,8 +391,8 @@ class OffersView(ListView):
 
     def search(self, request, data):
         user = UserProfile.get(request)
-        projects = user.offers()
-        return Response(self.get_paginator(projects, data))
+        projects = user.offers().without_children()
+        return Response(self.get_paginator(projects, data, asker=user))
 
 
 class ProfileEditView(APIView):

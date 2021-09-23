@@ -234,7 +234,28 @@ class CalendarDaySerializer(serializers.ModelSerializer):
         pass
 
 
-class ProjectListItemSerializer(serializers.ModelSerializer):
+class ProjectSerializerBase(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = '__all__'
+        read_only_fields = ['id', 'date_start', 'date_end', 'children']
+
+    def __init__(self, *args, asker=None, **kwargs):
+        self.asker = asker
+        super().__init__(*args, **kwargs)
+
+    children = serializers.SerializerMethodField('get_children', allow_null=True, read_only=True)
+
+    def get_children(self, instance):
+        queryset = instance.children.all()
+        if self.asker:
+            queryset = queryset.exclude(canceled=self.asker)
+            if self.asker != instance.creator:
+                queryset = queryset.filter(user=self.asker)
+        return ProjectListItemSerializer(queryset, many=True, allow_null=True, read_only=True).data
+
+
+class ProjectListItemSerializer(ProjectSerializerBase):
     class Meta:
         model = Project
         fields = ['id', 'title', 'client', 'creator', 'user', 'money', 'money_per_day', 'money_calculating', 'dates', 'date_start', 'date_end', 'parent', 'children', 'is_wait', 'is_paid', 'canceled', 'confirmed', 'is_series']
@@ -245,24 +266,18 @@ class ProjectListItemSerializer(serializers.ModelSerializer):
     canceled = ProfileShortSerializer(allow_null=True)
     dates = serializers.SerializerMethodField('get_dates')
     parent = ProjectShortSerializer(allow_null=True)
-    children = RecursiveField(many=True, allow_null=True, read_only=True)
 
     def get_dates(self, obj):
         return [i.date for i in obj.days.all()]
 
 
-class ProjectSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Project
-        read_only_fields = ['id', 'date_start', 'date_end', 'children']
-        fields = '__all__'
+class ProjectSerializer(ProjectSerializerBase):
 
     days = ProjectDaySerializer(many=True, allow_null=True, default=None)
     client = ClientItemSerializer(allow_null=True, default=None)
     creator = ProfileItemShortSerializer()
     user = ProfileItemShortSerializer(allow_null=True, default=None)
     canceled = ProfileItemShortSerializer(allow_null=True, default=None)
-    children = ProjectListItemSerializer(many=True, allow_null=True, read_only=True)
     parent = ProjectShortSerializer(allow_null=True, default=None)
 
     def create(self, validated_data):

@@ -249,20 +249,20 @@ class BotNotification:
 
     @classmethod
     def accept_project(cls, project):
-        message = f'Проект {project.title} был подтвержден пользователем {project.user.full_name}'
+        message = f'Проект {project} был подтвержден пользователем {project.user.full_name}'
         cls.send(project.creator, message, project)
 
     @classmethod
     def decline_project(cls, project):
-        message = f'Пользователь {project.user.full_name} отказался от проекта {project.title}'
+        message = f'Пользователь {project.user.full_name} отказался от проекта {project}'
         cls.send(project.creator, message, project)
 
     @classmethod
     def update_project(cls, project):
-        message = f'Проект {project.title} был изменен'
+        message = f'Проект {project} был изменен'
         cls.send(project.user, message, project)
 
     @classmethod
     def cancel_project(cls, project):
-        message = f'Проект {project.title} был отменён'
+        message = f'Проект {project} был отменён'
         cls.send(project.user, message, project)
