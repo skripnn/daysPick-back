@@ -187,13 +187,16 @@ class Account(models.Model):
 
     @classmethod
     def create(cls, **data):
-        username = data.pop('username', f'u{uuid.uuid4().hex[:16]}')
+        username = data.pop('username', None)
         password = data.pop('password', uuid.uuid4().hex)
         data.pop('password2', None)
-        user = User.objects.create_user(username=username, password=password)
+        user = User.objects.create_user(username=username or f'u{uuid.uuid4().hex[:16]}', password=password)
         account = cls.objects.create(user=user, **data)
         UserProfile.objects.create(account=account)
-        account.update(username=str(account.profile.id))
+        if not username:
+            account.update(username=str(account.profile.id))
+        from api.bot import BotNotification
+        BotNotification.send_to_admins(f'Аккаунт создан.\nusername: {account.username}')
         if account and account.email:
             account.send_confirmation_email()
         return account
@@ -614,7 +617,7 @@ class ProjectsQuerySet(models.QuerySet):
 
     def actual(self):
         today = timezone.now().date()
-        return self.without_folders().filter(Q(date_end__gte=today) | Q(is_paid=False)).distinct()
+        return self.without_folders().filter(Q(date_end__gte=today) | Q(is_paid=False)).distinct().order_by('-confirmed')
 
     def search(self, folders=False, without_folders=False, **kwargs):
         search = kwargs.get('filter')
@@ -625,7 +628,7 @@ class ProjectsQuerySet(models.QuerySet):
         elif search or days or without_folders:
             projects = self
         else:
-            projects = self.exclude(Q(parent__isnull=False) & Q(creator=F('user')))
+            projects = self.exclude(Q(parent__isnull=False) & Q(creator=F('user'))).without_children()
 
         if search:
             if isinstance(search, list):
@@ -807,31 +810,3 @@ class ProjectResponse(models.Model):
     user = models.ForeignKey('UserProfile', related_name='responses', on_delete=models.CASCADE)
     comment = models.TextField(**null)
     time = models.DateTimeField(auto_now_add=True)
-
-
-class FoldersManager(models.Manager):
-    use_for_related_fields = True
-
-    def search(self, **kwargs):
-        if not kwargs:
-            return self.get_queryset().all()
-
-        search = kwargs.get('filter')
-        clients = self.get_queryset()
-
-        if search:
-            if isinstance(search, list):
-                search = search[0]
-            try:
-                spelled = YandexSpeller().spelled(search)
-            except:
-                spelled = search
-            options = [option for option in spelled.split(' ') if len(option) > 1]
-            vector = SearchVector('title')
-            clients = clients.filter(
-                Q(title__icontains=search) |
-                Q(title__icontains=spelled) |
-                Q(title__in=options)
-            ).annotate(rank=SearchRank(vector, search)).order_by('-rank')
-
-        return clients

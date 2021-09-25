@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from telebot import TeleBot, types
 import re
 
-from timespick.keys import TELEGRAM_TOKEN, admin_ids
+from timespick.keys import TELEGRAM_TOKEN, admin_ids, SITE
 
 
 bot = TeleBot(TELEGRAM_TOKEN)
@@ -74,7 +74,7 @@ class Phone:
                         data['username'] = message.from_user.username
                     account = Account.create(**data)
                     if account:
-                        button = types.InlineKeyboardButton('Перейти на сайт', 'https://dayspick.ru/')
+                        button = types.InlineKeyboardButton('Перейти на сайт', SITE)
                         keyboard = types.InlineKeyboardMarkup().add(button)
                         bot.send_message(message.chat.id, f'Аккаунт успешно создан', reply_markup=keyboard)
                     else:
@@ -84,7 +84,7 @@ class Phone:
                 if account.phone != phone_number and account.phone_confirm != phone_number:
                     keyboard = types.ReplyKeyboardRemove()
                     bot.send_message(message.chat.id, f'Ошибка', reply_markup=keyboard)
-                    button = types.InlineKeyboardButton('Перейти на сайт', 'https://dayspick.ru/')
+                    button = types.InlineKeyboardButton('Перейти на сайт', SITE)
                     keyboard = types.InlineKeyboardMarkup().add(button)
                     bot.send_message(message.chat.id, f'Сначала измени телефон в настройках аккаунта на сайте',
                                      reply_markup=keyboard)
@@ -97,7 +97,7 @@ class Phone:
                     bot.send_message(message.chat.id, f'Номер подтвержден', reply_markup=keyboard)
                 elif account.phone_confirm == phone_number:
                     bot.send_message(message.chat.id, f'Номер уже подтвержден', reply_markup=keyboard)
-                button = types.InlineKeyboardButton('Перейти на сайт', 'https://dayspick.ru/')
+                button = types.InlineKeyboardButton('Перейти на сайт', SITE)
                 keyboard = types.InlineKeyboardMarkup().add(button)
                 bot.send_message(message.chat.id, f'Можешь перейти на сайт', reply_markup=keyboard)
         elif message.text == 'Отмена':
@@ -235,7 +235,7 @@ class BotNotification:
     def send(cls, profile, message, project):
         if profile and profile.account and profile.account.telegram_chat_id:
             try:
-                button = types.InlineKeyboardButton('Посмотреть', f'https://dayspick.ru/project/{project.id}')
+                button = types.InlineKeyboardButton('Посмотреть', f'{SITE}project/{project.id}')
                 keyboard = types.InlineKeyboardMarkup().add(button)
                 bot.send_message(profile.account.telegram_chat_id, message, parse_mode='MarkdownV2', reply_markup=keyboard)
             except:

@@ -45,9 +45,6 @@ def delete_account_and_user(sender, instance, **kwargs):
 
 @receiver(models.signals.post_save, sender=Account)
 def account_post_save(sender, instance, created, **kwargs):
-    if created:
-        from api.bot import BotNotification
-        BotNotification.send_to_admins(f'Аккаунт создан.\nusername: {instance.username}')
     if not instance.is_confirmed:
         from .tasks import check_user_confirmation
         try:

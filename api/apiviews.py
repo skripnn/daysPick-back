@@ -249,6 +249,7 @@ class ProjectView(APIView):
         }
         user = UserProfile.get(request.GET.get('user'))
         series = Project.get(request.GET.get('series'))
+        copy = Project.get(request.GET.get('copy'))
 
         if series:
             user = series.user
@@ -266,6 +267,12 @@ class ProjectView(APIView):
                 'confirmed': user == asker
             })
             result['calendar'] = user.get_calendar(asker)
+
+        if copy:
+            page = copy.page(asker)
+            if page:
+                page['project']['id'] = None
+                return Response(page)
 
         return Response(result)
 
@@ -381,7 +388,7 @@ class ProjectsView(ListView):
         asker = UserProfile.get(request)
         if not user:
             user = asker
-        projects = user.projects(asker).without_children()
+        projects = user.projects(asker)
 
         return Response(self.get_paginator(projects, data, asker=asker))
 
@@ -391,7 +398,7 @@ class OffersView(ListView):
 
     def search(self, request, data):
         user = UserProfile.get(request)
-        projects = user.offers().without_children()
+        projects = user.offers()
         return Response(self.get_paginator(projects, data, asker=user))
 
 
