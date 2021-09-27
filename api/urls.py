@@ -19,7 +19,7 @@ from api.apiviews import ProjectView, LoginView, SignupView, DaysOffView, Profil
     ConfirmView, CalendarView, ProjectsView, ClientsView, ClientView, ProfileEditView, \
     TagsView, ImgView, LoginFacebookView, LoginTelegramView, OffersView, \
     ProjectsStatisticsView, ProjectResponseView, AccountView, RecoveryView, ProfileView, OffersStatisticsView, \
-    ClientsCompaniesView
+    ClientsCompaniesView, FavoritesView
 
 urlpatterns = [
     path('login/facebook/', LoginFacebookView.as_view()),
@@ -56,6 +56,8 @@ urlpatterns = [
     path('clients/', ClientsView.as_view()),
     path('client/<int:pk>/', ClientView.as_view()),
     path('client/', ClientView.as_view()),
+
+    path('favorites/', FavoritesView.as_view()),
 
     path('@<str:username>/', ProfileView.as_view()),
     path('', ProfilesView.as_view())

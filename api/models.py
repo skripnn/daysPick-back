@@ -6,7 +6,7 @@ from functools import reduce
 from django.contrib.auth.models import User, AbstractUser
 from django.contrib.postgres.search import SearchRank, SearchVector
 from django.db import models, OperationalError
-from django.db.models import Q, Count, F
+from django.db.models import Q, Count, F, Case, When, BooleanField
 from django.utils import timezone
 from pyaspeller.yandex_speller import YandexSpeller
 
@@ -144,6 +144,7 @@ class Account(models.Model):
                                             related_name='account')
     is_public = models.BooleanField(default=False)
     raised = models.DateTimeField(default=timezone.now)
+    favorites = models.ManyToManyField('UserProfile', related_name='favorite_of')
 
     @property
     def can_be_raised(self):
@@ -203,6 +204,15 @@ class Account(models.Model):
 
     def update(self, **data):
         for key, value in data.items():
+            if key == 'favorite':
+                profile = UserProfile.get(value)
+                if not profile:
+                    continue
+                if self.favorites.filter(id=value):
+                    self.favorites.remove(profile)
+                else:
+                    self.favorites.add(profile)
+                continue
             if key == 'raised':
                 if self.can_be_raised:
                     self.raised = timezone.now()
@@ -280,67 +290,19 @@ class Account(models.Model):
         return self.username
 
 
-class UserProfile(models.Model):
-    account = models.OneToOneField(Account, on_delete=models.SET_NULL, related_name='profile', null=True)
-    first_name = models.CharField(max_length=64, **null)
-    last_name = models.CharField(max_length=64, **null)
-    email = models.EmailField(**null)
-    phone = models.CharField(max_length=32, **null)
-    telegram = models.CharField(max_length=32, **null)
-    avatar = models.ImageField(upload_to='avatars', **null)
-    photo = models.ImageField(upload_to='photos', **null)
-    info = models.TextField(**null)
-
-    @property
-    def is_deleted(self):
-        return not bool(self.account)
-
-    @property
-    def full_name(self):
-        full_name = self.username
-        if self.first_name:
-            full_name = self.first_name
-        if self.last_name:
-            full_name += ' ' + self.last_name
-        return full_name
-
-    @property
-    def username(self):
-        if not self.account:
-            return '<DELETED>'
-        return self.account.username
-
-    def projects(self, asker=None):
-        if not asker:
-            asker = self
-        # projects = self.all_projects.exclude(creator__isnull=True).exclude(canceled=asker).exclude(~Q(creator=self) & Q(is_series=True))
-        projects = Project.objects.exclude(creator__isnull=True).filter(Q(user=self) | Q(children__user=self)).distinct().exclude(canceled=asker)
-        if asker == self:
-            projects = projects
-        else:
-            projects = projects.filter(creator=asker)
-        return projects
-
-    def offers(self):
-        return self.created_projects.exclude(user=self).exclude(canceled=self)
-
-    @property
-    def days_off_project(self):
-        return self.all_projects.get_or_create(creator__isnull=True)[0]
-
-    @classmethod
-    def get(cls, username, alt=None):
-        account = Account.get(username)
-        if account:
-            return account.profile
-        return alt
-
-    @classmethod
-    def search(cls, **kwargs):
-        users = cls.objects.exclude(account__isnull=True).exclude(account__is_public=False).order_by('-account__raised')
+class UserProfileQuerySet(models.QuerySet):
+    def search(self, **kwargs):
+        users = self.exclude(account__isnull=True).exclude(account__is_public=False).order_by('-account__raised')
 
         if not kwargs:
             return users
+
+        if kwargs.get('asker'):
+            users = users.annotate(is_favorite=Case(
+                When(favorite_of__profile=kwargs['asker'], then=True),
+                default=False,
+                output_field=BooleanField()
+            )).order_by('-is_favorite')
 
         if kwargs.get('exclude'):
             pk = kwargs['exclude']
@@ -429,6 +391,71 @@ class UserProfile(models.Model):
             busy_users = users.filter(all_projects__days__date__in=dates, all_projects__is_wait=False).values('pk')
             users = users.exclude(pk__in=busy_users)
         return users.distinct()
+
+
+class UserProfileManager(models.Manager):
+    use_for_related_fields = True
+
+    def get_queryset(self):
+        return UserProfileQuerySet(self.model, using=self._db)
+
+
+class UserProfile(models.Model):
+    account = models.OneToOneField(Account, on_delete=models.SET_NULL, related_name='profile', null=True)
+    first_name = models.CharField(max_length=64, **null)
+    last_name = models.CharField(max_length=64, **null)
+    email = models.EmailField(**null)
+    phone = models.CharField(max_length=32, **null)
+    telegram = models.CharField(max_length=32, **null)
+    avatar = models.ImageField(upload_to='avatars', **null)
+    photo = models.ImageField(upload_to='photos', **null)
+    info = models.TextField(**null)
+
+    objects = UserProfileManager()
+
+    @property
+    def is_deleted(self):
+        return not bool(self.account)
+
+    @property
+    def full_name(self):
+        full_name = self.username
+        if self.first_name:
+            full_name = self.first_name
+        if self.last_name:
+            full_name += ' ' + self.last_name
+        return full_name
+
+    @property
+    def username(self):
+        if not self.account:
+            return '<DELETED>'
+        return self.account.username
+
+    def projects(self, asker=None):
+        if not asker:
+            asker = self
+        projects = Project.objects.exclude(creator__isnull=True).filter(
+            Q(user=self) | Q(children__user=self)).distinct().exclude(canceled=asker)
+        if asker == self:
+            projects = projects
+        else:
+            projects = projects.filter(creator=asker)
+        return projects
+
+    def offers(self):
+        return self.created_projects.exclude(user=self).exclude(canceled=self)
+
+    @property
+    def days_off_project(self):
+        return self.all_projects.get_or_create(creator__isnull=True)[0]
+
+    @classmethod
+    def get(cls, username, alt=None):
+        account = Account.get(username)
+        if account:
+            return account.profile
+        return alt
 
     def get_actual_projects(self, asker):
         if asker == self:
@@ -617,7 +644,7 @@ class ProjectsQuerySet(models.QuerySet):
 
     def actual(self):
         today = timezone.now().date()
-        return self.without_folders().filter(Q(date_end__gte=today) | Q(is_paid=False)).distinct().order_by('-confirmed')
+        return self.without_folders().filter(Q(date_end__gte=today) | Q(is_paid=False)).distinct()
 
     def search(self, folders=False, without_folders=False, **kwargs):
         search = kwargs.get('filter')

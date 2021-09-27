@@ -316,11 +316,12 @@ class ClientView(APIView):
         profile = UserProfile.get(request)
         client = None
         if pk is not None:
-            client = Client.objects.get(id=pk)
+            client = Client.objects.filter(pk=pk).first()
         serializer = ClientItemSerializer(client, data=request.data)
-        if serializer.is_valid(raise_exception=True):
+        if serializer.is_valid():
             serializer.save(user=profile)
             return Response(serializer.data)
+        print(serializer.errors)
         return Response(status=500)
 
     def delete(self, request, pk):
@@ -350,7 +351,21 @@ class ProfilesView(ListView):
     serializer = ProfileItemSerializer
 
     def search(self, request, data):
-        return Response(self.get_paginator(UserProfile, data))
+        asker = UserProfile.get(request.user)
+        if asker:
+            data = dict(data)
+            data['asker'] = asker
+        profiles = UserProfile.objects.all()
+        return Response(self.get_paginator(profiles, data))
+
+
+class FavoritesView(ListView):
+    serializer = ProfileItemSerializer
+
+    def search(self, request, data):
+        account = Account.get(request.user)
+        profiles = account.favorites.all()
+        return Response(self.get_paginator(profiles, data))
 
 
 class CalendarView(APIView):

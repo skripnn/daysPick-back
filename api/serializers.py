@@ -42,13 +42,14 @@ class ItemSerializer(serializers.ModelSerializer):
         model = ...
 
     def to_internal_value(self, data):
+        pk = None
         if isinstance(data, dict):
             pk = data.get('id')
         elif isinstance(data, int):
             pk = data
-        else:
-            return None
-        return self.Meta.model.objects.filter(id=pk).first()
+        if pk:
+            return self.Meta.model.objects.filter(id=pk).first()
+        return super().to_internal_value(data)
 
 
 class ClientItemSerializer(ItemSerializer):
