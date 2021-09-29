@@ -146,6 +146,8 @@ class Account(models.Model):
     raised = models.DateTimeField(default=timezone.now)
     favorites = models.ManyToManyField('UserProfile', related_name='favorite_of')
 
+    telegram_notifications = models.BooleanField(default=False)
+
     @property
     def can_be_raised(self):
         delta = timezone.now() - self.raised
@@ -794,14 +796,16 @@ class Project(models.Model):
             return {'error': 'Ошибка загрузки проекта'}
         from api.serializers import ProjectSerializer
         result = {
-            'project': ProjectSerializer(self, asker=asker).data
+            'project': ProjectSerializer(self, asker=asker).data,
+            'calendar': {
+                'daysPick': self.dates
+            }
         }
         if self.user:
             date_start = self.date_start or timezone.now()
             start = date_start - timedelta(days=date_start.weekday(), weeks=15)
             end = start + timedelta(weeks=68)
-            result['calendar'] = self.user.get_calendar(asker, start, end, project_id=self.id)
-            result['calendar']['daysPick'] = self.dates
+            result['calendar'].update(self.user.get_calendar(asker, start, end, project_id=self.id))
         return result
 
     def __str__(self):

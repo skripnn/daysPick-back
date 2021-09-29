@@ -233,7 +233,7 @@ class BotNotification:
 
     @classmethod
     def send(cls, profile, message, project):
-        if profile and profile.account and profile.account.telegram_chat_id:
+        if profile and profile.account and profile.account.telegram_chat_id and profile.account.telegram_notifications:
             try:
                 button = types.InlineKeyboardButton('Посмотреть', f'{SITE}project/{project.id}')
                 keyboard = types.InlineKeyboardMarkup().add(button)
