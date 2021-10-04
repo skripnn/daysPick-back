@@ -10,7 +10,7 @@ from django.db.models.functions import Round
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag, ProjectResponse, Account
+from api.models import Project, Client, Day, UserProfile, Tag, ProfileTag, ProjectShowing, Account
 from api.serializers import ClientSerializer, TagSerializer, AccountSerializer, \
     ClientItemSerializer, ProfileItemSerializer, ProfileItemShortSerializer, \
     SeriesFillingSerializer, ProjectListItemSerializer, ProfileSerializer
@@ -34,7 +34,7 @@ class ListView(APIView, metaclass=ABCMeta):
     def get_paginator(self, queryset, data, **kwargs):
         page = int(data.get('page', 0))
         items = queryset.search(**data)
-        paginator = Paginator(items, 15)
+        paginator = Paginator(items, kwargs.pop('count', 15))
         pages = paginator.num_pages
         result = paginator.page(page + 1).object_list
         return {
@@ -210,6 +210,8 @@ class ProfileView(APIView):
         profile = UserProfile.get(username)
         asker = UserProfile.get(request)
         if profile:
+            if request.query_params.get('profile') is not None:
+                return Response(ProfileSerializer(profile).data)
             return Response(profile.page(asker, start=request.GET.get('start'), end=request.GET.get('end')))
         return Response({'error': f'Пользователь {username} не найден'})
 
@@ -220,6 +222,8 @@ class ProjectView(APIView):
         if pk:
             project = Project.objects.filter(pk=pk).first()
             if project:
+                if not project.user and project.creator != asker and not project.is_series:
+                    ProjectShowing.objects.get_or_create(project_id=pk, user=asker, **request.data)
                 page = project.page(asker)
                 if page:
                     return Response(page)
@@ -454,7 +458,15 @@ class ImgView(APIView):
         return Response({'error': 'Профиль не найден'})
 
 
-class TagsView(APIView):
+class TagsView(ListView):
+    serializer = TagSerializer
+
+    def search(self, request, data):
+        paginator = self.get_paginator(Tag, data, count=5)
+        return Response(paginator.get('list'))
+
+
+class ProfileTagsView(APIView):
     def get(self, request):
         profile = UserProfile.get(request)
         tags = Tag.search(profile=profile, **request.GET)
@@ -516,5 +528,9 @@ class ProjectsStatisticsView(StatisticsView):
 class ProjectResponseView(APIView):
     def post(self, request, pk):
         profile = UserProfile.get(request)
-        ProjectResponse.objects.get_or_create(project_id=pk, user=profile, **request.data)
-        return Response(status=200)
+        response, created = ProjectShowing.objects.get_or_create(project_id=pk, user=profile, **request.data)
+        from django.utils import timezone
+        response.time = timezone.now()
+        response.response = True
+        response.save()
+        return Response({})

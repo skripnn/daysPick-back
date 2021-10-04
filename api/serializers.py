@@ -239,13 +239,14 @@ class ProjectSerializerBase(serializers.ModelSerializer):
     class Meta:
         model = Project
         fields = '__all__'
-        read_only_fields = ['id', 'date_start', 'date_end', 'children']
+        read_only_fields = ['id', 'date_start', 'date_end', 'children', 'response']
 
     def __init__(self, *args, asker=None, **kwargs):
         self.asker = asker
         super().__init__(*args, **kwargs)
 
     children = serializers.SerializerMethodField('get_children', allow_null=True, read_only=True)
+    response = serializers.SerializerMethodField('get_response', allow_null=True, read_only=True)
 
     def get_children(self, instance):
         queryset = instance.children.all()
@@ -254,6 +255,13 @@ class ProjectSerializerBase(serializers.ModelSerializer):
             if self.asker != instance.creator:
                 queryset = queryset.filter(user=self.asker)
         return ProjectListItemSerializer(queryset, many=True, allow_null=True, read_only=True).data
+
+    def get_response(self, instance):
+        if self.asker and not instance.is_series and not instance.user:
+            response = instance.responses.filter(user=self.asker).first()
+            if response:
+                return response.response
+        return None
 
 
 class ProjectListItemSerializer(ProjectSerializerBase):

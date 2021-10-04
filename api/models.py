@@ -26,7 +26,8 @@ class Tag(models.Model):
     def search(cls, **kwargs):
         search = kwargs.get('filter')
         profile = kwargs.get('profile')
-        tags = cls.objects.all()
+        exclude = kwargs.get('exclude', [])
+        tags = cls.objects.exclude(id__in=exclude)
 
         if profile:
             tags = cls.objects.exclude(profile_tags__user=profile)
@@ -144,7 +145,7 @@ class Account(models.Model):
                                             related_name='account')
     is_public = models.BooleanField(default=False)
     raised = models.DateTimeField(default=timezone.now)
-    favorites = models.ManyToManyField('UserProfile', related_name='favorite_of')
+    favorites = models.ManyToManyField('UserProfile', related_name='favorite_of', blank=True)
 
     telegram_notifications = models.BooleanField(default=False)
 
@@ -310,6 +311,9 @@ class UserProfileQuerySet(models.QuerySet):
             pk = kwargs['exclude']
             users = users.exclude(pk=pk)
 
+        if kwargs.get('tags'):
+            users = users.filter(tags__tag_id__in=kwargs['tags'])
+
         if kwargs.get('filter'):
             search = kwargs['filter']
             if isinstance(search, list):
@@ -366,27 +370,28 @@ class UserProfileQuerySet(models.QuerySet):
                 Q(last_name__in=options)
             )
 
-            tag_exact = users.filter(
-                Q(tags__tag__title__iexact=search) |
-                Q(tags__tag__title__iexact=spelled)
-            ).order_by('tags__rank')
-
-            tag_words = users.filter(
-                Q(tags__tag__title__search=search) |
-                Q(tags__tag__title__search=spelled)
-            ).order_by('tags__rank')
-
-            tag_contains = users.filter(
-                Q(tags__tag__title__icontains=search) |
-                Q(tags__tag__title__icontains=spelled)
-            ).order_by('tags__rank')
+            # tag_exact = users.filter(
+            #     Q(tags__tag__title__iexact=search) |
+            #     Q(tags__tag__title__iexact=spelled)
+            # ).order_by('tags__rank')
+            #
+            # tag_words = users.filter(
+            #     Q(tags__tag__title__search=search) |
+            #     Q(tags__tag__title__search=spelled)
+            # ).order_by('tags__rank')
+            #
+            # tag_contains = users.filter(
+            #     Q(tags__tag__title__icontains=search) |
+            #     Q(tags__tag__title__icontains=spelled)
+            # ).order_by('tags__rank')
 
             info_contains = users.filter(
                 Q(info__icontains=search) |
                 Q(info__icontains=spelled)
             ).order_by('tags__rank')
 
-            users = name_exact | phone_endswith | tag_exact | name_words | tag_words | name_contains | tag_contains | info_contains | phone_contains
+            # users = name_exact | phone_endswith | tag_exact | name_words | tag_words | name_contains | tag_contains | info_contains | phone_contains
+            users = name_exact | phone_endswith | name_words | name_contains | info_contains | phone_contains
 
         if kwargs.get('days'):
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
@@ -792,7 +797,7 @@ class Project(models.Model):
         return title
 
     def page(self, asker):
-        if (self.user != asker and self.creator != asker) or self.canceled == asker:
+        if (self.user and self.user != asker and self.creator != asker) or self.canceled == asker:
             return {'error': 'Ошибка загрузки проекта'}
         from api.serializers import ProjectSerializer
         result = {
@@ -801,11 +806,17 @@ class Project(models.Model):
                 'daysPick': self.dates
             }
         }
+
+        user = None
         if self.user:
+            user = self.user
+        elif self.creator != asker:
+            user = asker
+        if user:
             date_start = self.date_start or timezone.now()
             start = date_start - timedelta(days=date_start.weekday(), weeks=15)
             end = start + timedelta(weeks=68)
-            result['calendar'].update(self.user.get_calendar(asker, start, end, project_id=self.id))
+            result['calendar'].update(user.get_calendar(asker, start, end, project_id=self.id))
         return result
 
     def __str__(self):
@@ -833,11 +844,12 @@ class FacebookAccount(models.Model):
         return f'{self.name} ({self.id})'
 
 
-class ProjectResponse(models.Model):
+class ProjectShowing(models.Model):
     class Meta:
         ordering = ['project', 'time']
 
     project = models.ForeignKey('Project', related_name='responses', on_delete=models.CASCADE)
-    user = models.ForeignKey('UserProfile', related_name='responses', on_delete=models.CASCADE)
+    user = models.ForeignKey('UserProfile', related_name='responses', on_delete=models.CASCADE, **null)
+    response = models.BooleanField(default=False)
     comment = models.TextField(**null)
     time = models.DateTimeField(auto_now_add=True)
