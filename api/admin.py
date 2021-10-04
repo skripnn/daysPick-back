@@ -78,8 +78,12 @@ class ProjectShowingAdmin(admin.ModelAdmin):
     list_display = ('id', 'project', 'user', 'time', 'response')
 
 
+@admin.register(ProfileTag)
+class ProfileTagAdmin(admin.ModelAdmin):
+    list_display = ('id', 'tag', 'user')
+
+
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 admin.site.register(FacebookAccount)
-admin.site.register(ProfileTag)
 admin.site.register(Account)

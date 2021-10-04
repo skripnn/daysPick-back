@@ -62,7 +62,7 @@ class ClientItemSerializer(ItemSerializer):
 class ProfileItemSerializer(ItemSerializer):
     class Meta:
         model = UserProfile
-        fields = ['id', 'username', 'full_name', 'avatar']
+        fields = ['id', 'username', 'full_name', 'avatar', 'is_simulated']
 
     def to_representation(self, obj):
         ret = super().to_representation(obj)
@@ -117,6 +117,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     is_public = serializers.SerializerMethodField('get_is_public', read_only=True)
     tags = serializers.SerializerMethodField('get_tags')
+    is_simulated = serializers.BooleanField(read_only=True)
 
     @staticmethod
     def get_tags(instance):

@@ -459,6 +459,7 @@ class ImgView(APIView):
 
 
 class TagsView(ListView):
+    permission_classes = ()
     serializer = TagSerializer
 
     def search(self, request, data):

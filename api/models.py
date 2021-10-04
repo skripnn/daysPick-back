@@ -300,12 +300,15 @@ class UserProfileQuerySet(models.QuerySet):
         if not kwargs:
             return users
 
+        ordering = []
+
         if kwargs.get('asker'):
             users = users.annotate(is_favorite=Case(
                 When(favorite_of__profile=kwargs['asker'], then=True),
                 default=False,
                 output_field=BooleanField()
-            )).order_by('-is_favorite')
+            ))
+            ordering.append('-is_favorite')
 
         if kwargs.get('exclude'):
             pk = kwargs['exclude']
@@ -313,85 +316,74 @@ class UserProfileQuerySet(models.QuerySet):
 
         if kwargs.get('tags'):
             users = users.filter(tags__tag_id__in=kwargs['tags'])
+            ordering.append('tags__rank')
+
+        if len(ordering):
+            users = users.order_by(*ordering, '-account__raised')
 
         if kwargs.get('filter'):
             search = kwargs['filter']
             if isinstance(search, list):
                 search = search[0]
-            words = search.split(' ')
-            if len(words) == 1 and not words[0]:
-                return []
-            try:
-                spelled = YandexSpeller().spelled(search)
-            except:
-                spelled = search
-            options = [option for option in spelled.split(' ') if len(option) > 1]
-            digits = ''.join(re.findall('[0-9]', search))
-            phone_templates = [match.group(1) for match in re.finditer(r'(?=(\d{9}))', digits)] or ['-']
+            if search != '***':
+                words = search.split(' ')
+                if len(words) == 1 and not words[0]:
+                    return []
+                try:
+                    spelled = YandexSpeller().spelled(search)
+                except:
+                    spelled = search
+                options = [option for option in spelled.split(' ') if len(option) > 1]
+                digits = ''.join(re.findall('[0-9]', search))
+                phone_templates = [match.group(1) for match in re.finditer(r'(?=(\d{9}))', digits)] or ['-']
 
-            phone_endswith = users.filter(
-                reduce(lambda q, value: q | Q(account__phone_confirm__endswith=value), phone_templates, Q())
-            )
+                phone_endswith = users.filter(
+                    reduce(lambda q, value: q | Q(account__phone_confirm__endswith=value), phone_templates, Q())
+                )
 
-            phone_contains = users.filter(
-                reduce(lambda q, value: q | Q(account__phone_confirm__icontains=value), phone_templates, Q())
-            )
+                phone_contains = users.filter(
+                    reduce(lambda q, value: q | Q(account__phone_confirm__icontains=value), phone_templates, Q())
+                )
 
-            name_exact = users.filter(
-                Q(account__user__username__iexact=search) |
-                Q(first_name__iexact=search) |
-                Q(last_name__iexact=search) |
-                Q(account__user__username__iexact=spelled) |
-                Q(first_name__iexact=spelled) |
-                Q(last_name__iexact=spelled)
-            )
+                name_exact = users.filter(
+                    Q(account__user__username__iexact=search) |
+                    Q(first_name__iexact=search) |
+                    Q(last_name__iexact=search) |
+                    Q(account__user__username__iexact=spelled) |
+                    Q(first_name__iexact=spelled) |
+                    Q(last_name__iexact=spelled)
+                )
 
-            name_words = users.filter(
-                Q(account__user__username__search=search) |
-                Q(first_name__search=search) |
-                Q(last_name__search=search) |
-                Q(account__user__username__search=spelled) |
-                Q(first_name__search=spelled) |
-                Q(last_name__search=spelled)
-            )
+                name_words = users.filter(
+                    Q(account__user__username__search=search) |
+                    Q(first_name__search=search) |
+                    Q(last_name__search=search) |
+                    Q(account__user__username__search=spelled) |
+                    Q(first_name__search=spelled) |
+                    Q(last_name__search=spelled)
+                )
 
-            name_contains = users.filter(
-                Q(account__user__username__icontains=search) |
-                Q(first_name__icontains=search) |
-                Q(last_name__icontains=search) |
-                Q(account__user__username__in=words) |
-                Q(first_name__in=words) |
-                Q(last_name__in=words) |
-                Q(account__user__username__icontains=spelled) |
-                Q(first_name__icontains=spelled) |
-                Q(last_name__icontains=spelled) |
-                Q(account__user__username__in=options) |
-                Q(first_name__in=options) |
-                Q(last_name__in=options)
-            )
+                name_contains = users.filter(
+                    Q(account__user__username__icontains=search) |
+                    Q(first_name__icontains=search) |
+                    Q(last_name__icontains=search) |
+                    Q(account__user__username__in=words) |
+                    Q(first_name__in=words) |
+                    Q(last_name__in=words) |
+                    Q(account__user__username__icontains=spelled) |
+                    Q(first_name__icontains=spelled) |
+                    Q(last_name__icontains=spelled) |
+                    Q(account__user__username__in=options) |
+                    Q(first_name__in=options) |
+                    Q(last_name__in=options)
+                )
 
-            # tag_exact = users.filter(
-            #     Q(tags__tag__title__iexact=search) |
-            #     Q(tags__tag__title__iexact=spelled)
-            # ).order_by('tags__rank')
-            #
-            # tag_words = users.filter(
-            #     Q(tags__tag__title__search=search) |
-            #     Q(tags__tag__title__search=spelled)
-            # ).order_by('tags__rank')
-            #
-            # tag_contains = users.filter(
-            #     Q(tags__tag__title__icontains=search) |
-            #     Q(tags__tag__title__icontains=spelled)
-            # ).order_by('tags__rank')
+                info_contains = users.filter(
+                    Q(info__icontains=search) |
+                    Q(info__icontains=spelled)
+                )
 
-            info_contains = users.filter(
-                Q(info__icontains=search) |
-                Q(info__icontains=spelled)
-            ).order_by('tags__rank')
-
-            # users = name_exact | phone_endswith | tag_exact | name_words | tag_words | name_contains | tag_contains | info_contains | phone_contains
-            users = name_exact | phone_endswith | name_words | name_contains | info_contains | phone_contains
+                users = name_exact | phone_endswith | name_words | name_contains | info_contains | phone_contains
 
         if kwargs.get('days'):
             dates = [datetime.strptime(day, '%Y-%m-%d') for day in kwargs.get('days')]
@@ -419,6 +411,12 @@ class UserProfile(models.Model):
     info = models.TextField(**null)
 
     objects = UserProfileManager()
+
+    @property
+    def is_simulated(self):
+        if self.account:
+            return self.account.user.is_staff
+        return False
 
     @property
     def is_deleted(self):
