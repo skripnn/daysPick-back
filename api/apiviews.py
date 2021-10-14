@@ -321,7 +321,7 @@ class ClientView(APIView):
         client = None
         if pk is not None:
             client = Client.objects.filter(pk=pk).first()
-        serializer = ClientItemSerializer(client, data=request.data)
+        serializer = ClientSerializer(client, data=request.data)
         if serializer.is_valid():
             serializer.save(user=profile)
             return Response(serializer.data)

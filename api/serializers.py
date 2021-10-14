@@ -105,7 +105,7 @@ class ProfileShortSerializer(ItemSerializer):
 class ClientShortSerializer(ItemSerializer):
     class Meta:
         model = Client
-        fields = ['id', 'full_name']
+        fields = ['id', 'full_name', 'name']
 
 
 class ProfileSerializer(serializers.ModelSerializer):
@@ -156,9 +156,9 @@ class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         fields = ['id', 'name', 'company', 'projects']
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'projects']
 
-    projects = serializers.SerializerMethodField('get_projects')
+    projects = serializers.SerializerMethodField('get_projects', read_only=True)
 
     @staticmethod
     def get_projects(instance):
