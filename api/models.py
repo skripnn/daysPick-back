@@ -195,8 +195,10 @@ class Account(models.Model):
         password = data.pop('password', uuid.uuid4().hex)
         data.pop('password2', None)
         user = User.objects.create_user(username=username or f'u{uuid.uuid4().hex[:16]}', password=password)
+        first_name = data.pop('first_name')
+        last_name = data.pop('last_name')
         account = cls.objects.create(user=user, **data)
-        UserProfile.objects.create(account=account)
+        UserProfile.objects.create(account=account, first_name=first_name, last_name=last_name)
         if not username:
             account.update(username=str(account.profile.id))
         from api.bot import BotNotification
